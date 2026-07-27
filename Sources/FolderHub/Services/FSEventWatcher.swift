@@ -3,9 +3,9 @@ import Foundation
 
 final class FSEventWatcher {
   private final class CallbackBox {
-    let handler: () -> Void
+    let handler: ([String]) -> Void
 
-    init(handler: @escaping () -> Void) {
+    init(handler: @escaping ([String]) -> Void) {
       self.handler = handler
     }
   }
@@ -18,9 +18,16 @@ final class FSEventWatcher {
   private var callbackBox: CallbackBox?
 
   func start(watching url: URL, onChange: @escaping () -> Void) {
+    start(watching: url, onEvents: { _ in onChange() })
+  }
+
+  func start(
+    watching url: URL,
+    onEvents: @escaping ([String]) -> Void
+  ) {
     stop()
 
-    let box = CallbackBox(handler: onChange)
+    let box = CallbackBox(handler: onEvents)
     callbackBox = box
     var context = FSEventStreamContext(
       version: 0,
@@ -30,18 +37,21 @@ final class FSEventWatcher {
       copyDescription: nil
     )
     let callback: FSEventStreamCallback = {
-      _, info, _, _, _, _ in
+      _, info, _, eventPaths, _, _ in
       guard let info else { return }
       let box = Unmanaged<CallbackBox>
         .fromOpaque(info)
         .takeUnretainedValue()
-      box.handler()
+      let paths = unsafeBitCast(eventPaths, to: NSArray.self)
+        .compactMap { $0 as? String }
+      box.handler(paths)
     }
 
     let flags = FSEventStreamCreateFlags(
       kFSEventStreamCreateFlagFileEvents
         | kFSEventStreamCreateFlagWatchRoot
         | kFSEventStreamCreateFlagNoDefer
+        | kFSEventStreamCreateFlagUseCFTypes
     )
     guard
       let newStream = FSEventStreamCreate(
