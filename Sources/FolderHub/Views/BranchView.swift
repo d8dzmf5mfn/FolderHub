@@ -165,8 +165,12 @@ private struct BranchRowView: View {
         store.trash(item)
       }
     }
+    .onDrag {
+      FileDragProvider.make(for: item.url)
+    }
     .accessibilityLabel(item.name)
     .accessibilityValue(item.isNavigableDirectory ? "Folder" : "File")
+    .accessibilityHint("Drag to share with another app")
   }
 
   private func loadDroppedURLs(

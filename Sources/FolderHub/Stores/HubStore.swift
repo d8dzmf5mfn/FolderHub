@@ -23,6 +23,7 @@ final class HubStore {
   private(set) var notice: String?
   private(set) var trashedItem: TrashedItem?
   private(set) var isLaunchAtLoginEnabled = false
+  private(set) var isHubPinned: Bool
   private(set) var renameItemID: URL?
   var renameDraft = ""
   var showHiddenFiles: Bool {
@@ -54,12 +55,14 @@ final class HubStore {
   @ObservationIgnored var onPresentationMetricsChange: ((HubPresentationMetrics, Bool) -> Void)?
   @ObservationIgnored var onShowHub: (() -> Void)?
   @ObservationIgnored var onCenterHub: (() -> Void)?
+  @ObservationIgnored var onMinimizeHub: (() -> Void)?
   @ObservationIgnored var onDetachBranch: ((CGSize) -> Void)?
   @ObservationIgnored var onCloseDetachedBranch: (() -> Void)?
   @ObservationIgnored var onOpenChildDirectory: ((URL) -> Void)?
-  @ObservationIgnored var onResetChildDirectories: (() -> Void)?
+  @ObservationIgnored var onHubPinChange: ((Bool) -> Void)?
 
   private static let showHiddenKey = "FolderHub.showHiddenFiles"
+  private static let hubPinnedKey = "FolderHub.isHubPinned"
 
   private init() {
     let persisted = persistence.load()
@@ -69,6 +72,7 @@ final class HubStore {
     folders = loadedFolders
     panelLocation = persisted.panelLocation
     showHiddenFiles = UserDefaults.standard.bool(forKey: Self.showHiddenKey)
+    isHubPinned = UserDefaults.standard.bool(forKey: Self.hubPinnedKey)
     let initialLayoutEngine = HubLayoutEngine()
     let initialHubDiameter = initialLayoutEngine.recommendedHubDiameter(
       folders: loadedFolders
@@ -417,7 +421,6 @@ final class HubStore {
 
     selectionTask?.cancel()
     collapseTask?.cancel()
-    onResetChildDirectories?()
     deactivateSecurityScope()
     watcher.stop()
     navigationPath = []
@@ -473,7 +476,6 @@ final class HubStore {
 
   func collapse() {
     guard selectedFolderID != nil else { return }
-    onResetChildDirectories?()
     selectionTask?.cancel()
     collapseTask?.cancel()
     refreshTask?.cancel()
@@ -516,7 +518,6 @@ final class HubStore {
 
   func detachSelectedBranch(offset: CGSize) {
     guard selectedFolderID != nil, !isBranchDetached else { return }
-    onResetChildDirectories?()
     isBranchDetached = true
     phase = .idle
     onDetachBranch?(offset)
@@ -758,6 +759,21 @@ final class HubStore {
 
   func centerHub() {
     onCenterHub?()
+  }
+
+  func minimizeHub() {
+    onMinimizeHub?()
+  }
+
+  func setHubPinned(_ isPinned: Bool) {
+    guard isHubPinned != isPinned else { return }
+    isHubPinned = isPinned
+    UserDefaults.standard.set(isPinned, forKey: Self.hubPinnedKey)
+    onHubPinChange?(isPinned)
+  }
+
+  func toggleHubPinned() {
+    setHubPinned(!isHubPinned)
   }
 
   func clearAllFolders() {

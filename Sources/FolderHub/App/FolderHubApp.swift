@@ -43,6 +43,15 @@ struct FolderHubApp: App {
       Button("Center Hub", systemImage: "scope") {
         store.centerHub()
       }
+      Button("Minimize Hub", systemImage: "minus.circle") {
+        store.minimizeHub()
+      }
+      Button(
+        store.isHubPinned ? "Unpin Hub" : "Keep Hub on Top",
+        systemImage: store.isHubPinned ? "pin.slash" : "pin"
+      ) {
+        store.toggleHubPinned()
+      }
       Button("Open FolderHubLibrary", systemImage: "folder") {
         store.revealManagedLibrary()
       }

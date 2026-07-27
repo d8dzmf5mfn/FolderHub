@@ -4,8 +4,8 @@ set -euo pipefail
 APP_NAME="FolderHub"
 BUNDLE_ID="com.folderhub.app"
 MIN_SYSTEM_VERSION="26.0"
-VERSION="${1:-0.1.1}"
-BUILD_NUMBER="${BUILD_NUMBER:-2}"
+VERSION="${1:-0.1.2}"
+BUILD_NUMBER="${BUILD_NUMBER:-3}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

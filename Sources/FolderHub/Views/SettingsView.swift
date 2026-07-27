@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
   @Bindable var store: HubStore
+  @Bindable private var glassAppearance = GlassAppearanceStore.shared
 
   var body: some View {
     Form {
@@ -20,6 +21,28 @@ struct SettingsView: View {
             set: { store.setLaunchAtLogin($0) }
           )
         )
+        Toggle(
+          "Keep Folder Hub on top",
+          isOn: Binding(
+            get: { store.isHubPinned },
+            set: { store.setHubPinned($0) }
+          )
+        )
+        LabeledContent("Glass transparency") {
+          HStack(spacing: 8) {
+            Slider(
+              value: Binding(
+                get: { glassAppearance.transparency },
+                set: { glassAppearance.setTransparency($0) }
+              ),
+              in: 0...1
+            )
+            .frame(width: 150)
+            Text("\(glassAppearance.percentage)%")
+              .monospacedDigit()
+              .frame(width: 38, alignment: .trailing)
+          }
+        }
       }
 
       Section("Managed folders") {
@@ -49,7 +72,7 @@ struct SettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .frame(width: 420, height: 300)
+    .frame(width: 440, height: 460)
     .navigationTitle("Folder Hub Settings")
   }
 }

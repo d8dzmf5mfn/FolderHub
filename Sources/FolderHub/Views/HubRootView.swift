@@ -9,8 +9,11 @@ struct HubRootView: View {
   @State private var liveBranchTranslation: CGSize = .zero
   @State private var isBranchHovered = false
   @State private var isBranchPressed = false
+  @Bindable private var glassAppearance = GlassAppearanceStore.shared
 
-  private let glassOpticalOpacity = 0.55
+  private var glassOpticalOpacity: Double {
+    glassAppearance.opticalOpacity
+  }
 
   private var metrics: HubPresentationMetrics {
     store.presentationMetrics

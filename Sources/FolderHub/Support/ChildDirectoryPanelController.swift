@@ -8,23 +8,70 @@ enum ChildDirectoryPanelPlacement {
   static func frame(
     size: CGSize,
     adjacentTo parentFrame: CGRect,
-    visibleFrame: CGRect
+    visibleFrame: CGRect,
+    avoiding occupiedFrames: [CGRect] = []
   ) -> CGRect {
     let available = visibleFrame.insetBy(dx: margin, dy: margin)
     let rightOriginX = parentFrame.maxX - overlap
     let leftOriginX = parentFrame.minX - size.width + overlap
-    let preferredX =
+    let preferredOrigins =
       rightOriginX + size.width <= available.maxX
-      ? rightOriginX
-      : leftOriginX
+      ? [rightOriginX, leftOriginX]
+      : [leftOriginX, rightOriginX]
+    let verticalStep = max(size.height - overlap, 48)
+    let verticalOffsets: [CGFloat] = [
+      0,
+      verticalStep,
+      -verticalStep,
+      verticalStep * 2,
+      -verticalStep * 2,
+      verticalStep * 3,
+      -verticalStep * 3,
+    ]
 
-    var origin = CGPoint(
-      x: preferredX,
-      y: parentFrame.midY - size.height / 2
-    )
-    origin.x = min(max(origin.x, available.minX), available.maxX - size.width)
-    origin.y = min(max(origin.y, available.minY), available.maxY - size.height)
-    return CGRect(origin: origin, size: size)
+    var bestFrame: CGRect?
+    var bestScore = CGFloat.greatestFiniteMagnitude
+
+    for (sideIndex, originX) in preferredOrigins.enumerated() {
+      for verticalOffset in verticalOffsets {
+        var origin = CGPoint(
+          x: originX,
+          y: parentFrame.midY - size.height / 2 + verticalOffset
+        )
+        origin.x = min(
+          max(origin.x, available.minX),
+          available.maxX - size.width
+        )
+        origin.y = min(
+          max(origin.y, available.minY),
+          available.maxY - size.height
+        )
+        let candidate = CGRect(origin: origin, size: size)
+        let overlapArea = occupiedFrames.reduce(CGFloat.zero) {
+          partialResult,
+          occupiedFrame in
+          let intersection = candidate.intersection(occupiedFrame)
+          guard !intersection.isNull else { return partialResult }
+          return partialResult + intersection.width * intersection.height
+        }
+        let score =
+          overlapArea * 10_000
+          + CGFloat(sideIndex) * 5
+          + abs(verticalOffset) * 0.1
+        if score < bestScore {
+          bestScore = score
+          bestFrame = candidate
+        }
+      }
+    }
+
+    return bestFrame
+      ?? CGRect(
+        x: available.minX,
+        y: available.minY,
+        width: size.width,
+        height: size.height
+      )
   }
 }
 
@@ -65,7 +112,7 @@ final class ChildDirectoryPanelController {
       .canJoinAllSpaces,
       .fullScreenAuxiliary,
     ]
-    panel.level = .normal
+    panel.level = FolderHubWindowPinning.level(isPinned: false)
 
     let hostingView = NSHostingView(
       rootView: ChildDirectoryBubbleView(store: store)
@@ -75,14 +122,19 @@ final class ChildDirectoryPanelController {
     panel.contentView = hostingView
 
     store.onOpenDirectory = onOpenDirectory
-    panel.onEscape = onClose
-    panel.onBack = onClose
+    store.onClose = onClose
+    store.onPinChange = { [weak self] isPinned in
+      self?.panel.level = FolderHubWindowPinning.level(isPinned: isPinned)
+    }
     panel.onQuickLook = { [weak store] in
       store?.previewSelectedItem()
     }
   }
 
-  func show(adjacentTo parentFrame: CGRect) {
+  func show(
+    adjacentTo parentFrame: CGRect,
+    avoiding occupiedFrames: [CGRect]
+  ) {
     let targetScreen =
       NSScreen.screens.first(where: {
         $0.visibleFrame.intersects(parentFrame)
@@ -94,9 +146,14 @@ final class ChildDirectoryPanelController {
     let targetFrame = ChildDirectoryPanelPlacement.frame(
       size: panel.frame.size,
       adjacentTo: parentFrame,
-      visibleFrame: targetScreen.visibleFrame
+      visibleFrame: targetScreen.visibleFrame,
+      avoiding: occupiedFrames
     )
     panel.setFrame(targetFrame, display: true)
+    bringToFront()
+  }
+
+  func bringToFront() {
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
   }

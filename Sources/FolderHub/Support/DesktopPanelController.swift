@@ -9,7 +9,8 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
   private var metrics: HubPresentationMetrics
   private var globalMouseMonitor: Any?
   private var detachedBranchController: DetachedBranchPanelController?
-  private var childDirectoryControllers: [ChildDirectoryPanelController] = []
+  private var childDirectoryHierarchy = ChildDirectoryHierarchy()
+  private var childDirectoryControllers: [UUID: ChildDirectoryPanelController] = [:]
   private var isUpdatingFrame = false
 
   init(store: HubStore) {
@@ -18,7 +19,7 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     metrics = initialMetrics
     panel = HubPanel(
       contentRect: CGRect(origin: .zero, size: initialMetrics.canvasSize),
-      styleMask: [.borderless],
+      styleMask: HubWindowControls.centerPanelStyleMask,
       backing: .buffered,
       defer: false
     )
@@ -40,6 +41,9 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     store.onCenterHub = { [weak self] in
       self?.centerOnActiveScreen()
     }
+    store.onMinimizeHub = { [weak self] in
+      self?.panel.miniaturize(nil)
+    }
     store.onDetachBranch = { [weak self] offset in
       self?.detachBranch(offset: offset)
     }
@@ -47,10 +51,10 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
       self?.closeDetachedBranch()
     }
     store.onOpenChildDirectory = { [weak self] url in
-      self?.openChildDirectory(url, after: -1)
+      self?.openChildDirectory(url, parentID: nil)
     }
-    store.onResetChildDirectories = { [weak self] in
-      self?.closeAllChildDirectories()
+    store.onHubPinChange = { [weak self] isPinned in
+      self?.panel.level = FolderHubWindowPinning.level(isPinned: isPinned)
     }
 
     panel.onEscape = { [weak store] in
@@ -71,8 +75,14 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
   }
 
   func show() {
+    NSApp.unhide(nil)
     NSApp.activate(ignoringOtherApps: true)
+    let animationBehavior = panel.animationBehavior
+    panel.animationBehavior = .none
+    panel.deminiaturize(nil)
+    panel.orderFrontRegardless()
     panel.makeKeyAndOrderFront(nil)
+    panel.animationBehavior = animationBehavior
   }
 
   func centerOnActiveScreen() {
@@ -113,6 +123,7 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     panel.hasShadow = false
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
+    panel.isRestorable = false
     panel.isMovableByWindowBackground = false
     panel.becomesKeyOnlyIfNeeded = false
     panel.acceptsMouseMovedEvents = true
@@ -121,7 +132,9 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
       .canJoinAllSpaces,
       .fullScreenAuxiliary,
     ]
-    panel.level = .normal
+    panel.level = FolderHubWindowPinning.level(
+      isPinned: store.isHubPinned
+    )
   }
 
   private func apply(
@@ -222,32 +235,44 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     detachedBranchController = nil
   }
 
-  private func openChildDirectory(_ url: URL, after sourceDepth: Int) {
-    let childIndex = sourceDepth + 1
-    closeChildDirectories(startingAt: childIndex)
-
+  private func openChildDirectory(_ url: URL, parentID: UUID?) {
     let parentFrame: CGRect
-    if sourceDepth < 0 {
-      guard let rootBranchFrame else { return }
-      parentFrame = rootBranchFrame
-    } else {
-      guard childDirectoryControllers.indices.contains(sourceDepth) else {
+    if let parentID {
+      guard let parentController = childDirectoryControllers[parentID] else {
         return
       }
-      parentFrame = childDirectoryControllers[sourceDepth].frame
+      parentFrame = parentController.frame
+    } else {
+      guard let rootBranchFrame else { return }
+      parentFrame = rootBranchFrame
+    }
+
+    let registration = childDirectoryHierarchy.register(
+      url,
+      parentID: parentID
+    )
+    guard case .inserted(let node) = registration else {
+      if case .existing(let node) = registration {
+        childDirectoryControllers[node.id]?.bringToFront()
+      }
+      return
     }
 
     let controller = ChildDirectoryPanelController(
-      directoryURL: url,
+      directoryURL: node.directoryURL,
       onOpenDirectory: { [weak self] childURL in
-        self?.openChildDirectory(childURL, after: childIndex)
+        self?.openChildDirectory(childURL, parentID: node.id)
       },
       onClose: { [weak self] in
-        self?.closeChildDirectories(startingAt: childIndex)
+        self?.closeChildDirectory(node.id)
       }
     )
-    childDirectoryControllers.append(controller)
-    controller.show(adjacentTo: parentFrame)
+    let occupiedFrames = childDirectoryControllers.values.map(\.frame)
+    childDirectoryControllers[node.id] = controller
+    controller.show(
+      adjacentTo: parentFrame,
+      avoiding: occupiedFrames
+    )
   }
 
   private var rootBranchFrame: CGRect? {
@@ -265,20 +290,11 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     )
   }
 
-  private func closeChildDirectories(startingAt index: Int) {
-    guard index < childDirectoryControllers.count else { return }
-    let firstIndex = max(index, 0)
-    guard firstIndex < childDirectoryControllers.count else { return }
-    for controller in childDirectoryControllers[firstIndex...] {
-      controller.close()
+  private func closeChildDirectory(_ id: UUID) {
+    let removedNodes = childDirectoryHierarchy.removeSubtree(rootedAt: id)
+    for node in removedNodes {
+      childDirectoryControllers.removeValue(forKey: node.id)?.close()
     }
-    childDirectoryControllers.removeSubrange(
-      firstIndex..<childDirectoryControllers.count
-    )
-  }
-
-  private func closeAllChildDirectories() {
-    closeChildDirectories(startingAt: 0)
   }
 
   private func installGlobalMouseMonitor() {

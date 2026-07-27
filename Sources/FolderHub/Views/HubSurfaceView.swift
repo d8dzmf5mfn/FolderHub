@@ -6,6 +6,8 @@ struct HubSurfaceView: View {
   @Binding var isDropTargeted: Bool
   let diameter: CGFloat
 
+  @State private var isHovered = false
+
   var body: some View {
     ZStack {
       Circle()
@@ -37,9 +39,18 @@ struct HubSurfaceView: View {
 
       HubDragCollisionHandle()
         .position(x: diameter / 2, y: diameter / 2)
+
+      hubMinimizeButton
+        .position(HubWindowControls.hubMinimizeCenter(diameter: diameter))
+        .zIndex(HubWindowControls.zIndex)
+
+      hubPinButton
+        .position(HubWindowControls.hubPinCenter(diameter: diameter))
+        .zIndex(HubWindowControls.zIndex)
     }
     .frame(width: diameter, height: diameter)
     .contentShape(Circle())
+    .onHover { isHovered = $0 }
     .onDrop(
       of: [UTType.fileURL.identifier],
       isTargeted: $isDropTargeted,
@@ -47,6 +58,81 @@ struct HubSurfaceView: View {
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Folder Hub")
+  }
+
+  private var hubPinButton: some View {
+    Button {
+      store.toggleHubPinned()
+    } label: {
+      Image(systemName: store.isHubPinned ? "pin.fill" : "pin")
+        .font(.system(size: 8.5, weight: .bold))
+        .foregroundStyle(
+          store.isHubPinned
+            ? Color.accentColor.opacity(0.72)
+            : Color.primary.opacity(0.4)
+        )
+        .frame(
+          width: HubWindowControls.hubHitDiameter,
+          height: HubWindowControls.hubHitDiameter
+        )
+        .contentShape(Circle())
+    }
+    .buttonStyle(HubElasticButtonStyle())
+    .background(
+      Circle()
+        .fill(
+          store.isHubPinned
+            ? Color.accentColor.opacity(0.08)
+            : Color.primary.opacity(isHovered ? 0.055 : 0.025)
+        )
+    )
+    .frame(
+      width: HubWindowControls.hubHitDiameter,
+      height: HubWindowControls.hubHitDiameter
+    )
+    .contentShape(Circle())
+    .opacity(
+      isHovered || store.isHubPinned
+        ? 1 : HubWindowControls.idleOpacity
+    )
+    .allowsHitTesting(true)
+    .allowsWindowActivationEvents(true)
+    .help(store.isHubPinned ? "Unpin Folder Hub" : "Keep Folder Hub on top")
+    .accessibilityLabel(
+      store.isHubPinned ? "Unpin Folder Hub" : "Pin Folder Hub"
+    )
+    .accessibilityValue(store.isHubPinned ? "On top" : "Normal level")
+  }
+
+  private var hubMinimizeButton: some View {
+    Button {
+      store.minimizeHub()
+    } label: {
+      Image(systemName: "minus")
+        .font(.system(size: 9, weight: .bold))
+        .foregroundStyle(Color.primary.opacity(0.42))
+        .frame(
+          width: HubWindowControls.hubHitDiameter,
+          height: HubWindowControls.hubHitDiameter
+        )
+        .contentShape(Circle())
+    }
+    .buttonStyle(HubElasticButtonStyle())
+    .background(
+      Circle()
+        .fill(Color.primary.opacity(isHovered ? 0.055 : 0.025))
+    )
+    .frame(
+      width: HubWindowControls.hubHitDiameter,
+      height: HubWindowControls.hubHitDiameter
+    )
+    .contentShape(Circle())
+    .opacity(isHovered ? 1 : HubWindowControls.idleOpacity)
+    .allowsHitTesting(true)
+    .allowsWindowActivationEvents(true)
+    .help("Minimize Folder Hub")
+    .accessibilityLabel("Minimize Folder Hub")
+    .accessibilityHint("Child folder bubbles stay open")
   }
 
   private func folderLabel(
@@ -117,9 +203,14 @@ struct HubSurfaceView: View {
     let horizontalExtent = abs(direction.dx) * layout.estimatedSize.width / 2
     let verticalExtent = abs(direction.dy) * layout.estimatedSize.height / 2
     let radius = diameter / 2 - max(horizontalExtent, verticalExtent) - 9
-    return CGPoint(
+    let proposed = CGPoint(
       x: direction.dx * radius,
       y: direction.dy * radius
+    )
+    return HubWindowControls.separatingLabelFromControls(
+      proposed,
+      size: layout.estimatedSize,
+      diameter: diameter
     )
   }
 

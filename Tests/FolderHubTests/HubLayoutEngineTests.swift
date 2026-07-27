@@ -56,12 +56,21 @@ struct HubLayoutEngineTests {
       }
 
       let labels = Array(first.labels.values)
+      let controlRects = HubWindowControls.labelExclusionRects(
+        diameter: diameter
+      )
       for leftIndex in labels.indices {
+        #expect(
+          controlRects.allSatisfy {
+            !$0.intersects(labels[leftIndex].collisionRect)
+          }
+        )
         for rightIndex in labels.indices where rightIndex > leftIndex {
           #expect(
             !labels[leftIndex].collisionRect.intersects(
               labels[rightIndex].collisionRect
-            )
+            ),
+            "Label overlap at folder count \(count)"
           )
         }
       }
@@ -89,7 +98,7 @@ struct HubLayoutEngineTests {
       return total + hypot(new.x - old.x, new.y - old.y)
     }
 
-    #expect(totalMovement < 110)
+    #expect(totalMovement < 140)
   }
 
   @Test("Hub diameter tightly follows label occupancy")

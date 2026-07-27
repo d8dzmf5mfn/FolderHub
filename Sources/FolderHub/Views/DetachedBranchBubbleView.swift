@@ -8,8 +8,11 @@ struct DetachedBranchBubbleView: View {
 
   @State private var isHovered = false
   @State private var isPressed = false
+  @Bindable private var glassAppearance = GlassAppearanceStore.shared
 
-  private let glassOpticalOpacity = 0.55
+  private var glassOpticalOpacity: Double {
+    glassAppearance.opticalOpacity
+  }
 
   var body: some View {
     ZStack {

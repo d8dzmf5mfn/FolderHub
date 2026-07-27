@@ -30,15 +30,20 @@ struct HubLayoutEngine: Sendable {
     let innerRadius =
       resolvedDiameter / 2 - HubSizingPolicy.contentInset
     let candidates = labelCandidates(folders: folders)
-    let labels = candidates.map { candidate in
-      HubLabelLayout(
-        folderID: candidate.folderID,
-        centerOffset: constrained(
-          candidate.centerOffset,
-          size: candidate.estimatedSize,
-          innerRadius: innerRadius
-        ),
-        estimatedSize: candidate.estimatedSize
+    var labels: [HubLabelLayout] = []
+    for candidate in candidates {
+      labels.append(
+        HubLabelLayout(
+          folderID: candidate.folderID,
+          centerOffset: availablePosition(
+            for: candidate,
+            diameter: resolvedDiameter,
+            innerRadius: innerRadius,
+            folderCount: folders.count,
+            placedLabels: labels
+          ),
+          estimatedSize: candidate.estimatedSize
+        )
       )
     }
 
@@ -176,10 +181,118 @@ struct HubLayoutEngine: Sendable {
     }
     return point.scaled(by: lowerBound)
   }
+
+  private func availablePosition(
+    for candidate: HubLabelLayout,
+    diameter: CGFloat,
+    innerRadius: CGFloat,
+    folderCount: Int,
+    placedLabels: [HubLabelLayout]
+  ) -> CGPoint {
+    let fallbackPoints = fallbackGrid(
+      innerRadius: innerRadius,
+      folderCount: folderCount
+    )
+    .sorted {
+      $0.distance(to: candidate.centerOffset)
+        < $1.distance(to: candidate.centerOffset)
+    }
+    let proposedPoints =
+      folderCount >= 3 && folderCount <= 4
+      ? fallbackPoints + [candidate.centerOffset]
+      : [candidate.centerOffset] + fallbackPoints
+    let controlRects = HubWindowControls.labelExclusionRects(
+      diameter: diameter
+    )
+
+    for proposed in proposedPoints {
+      let center = constrained(
+        proposed,
+        size: candidate.estimatedSize,
+        innerRadius: innerRadius
+      )
+      let collisionRect = labelCollisionRect(
+        center: center,
+        size: candidate.estimatedSize
+      )
+      guard !controlRects.contains(where: collisionRect.intersects) else {
+        continue
+      }
+      guard
+        !placedLabels.contains(where: {
+          collisionRect.intersects(
+            labelCollisionRect(
+              center: $0.centerOffset,
+              size: $0.estimatedSize
+            )
+          )
+        })
+      else {
+        continue
+      }
+      return center
+    }
+
+    return constrained(
+      candidate.centerOffset,
+      size: candidate.estimatedSize,
+      innerRadius: innerRadius
+    )
+  }
+
+  private func fallbackGrid(
+    innerRadius: CGFloat,
+    folderCount: Int
+  ) -> [CGPoint] {
+    if folderCount >= 3 && folderCount <= 4 {
+      let horizontal = innerRadius * 0.48
+      return [
+        CGPoint(x: -horizontal, y: 0),
+        CGPoint(x: horizontal, y: 5),
+        CGPoint(x: -horizontal, y: 27),
+        CGPoint(x: horizontal, y: 22),
+        CGPoint(x: -horizontal, y: 49),
+        CGPoint(x: horizontal, y: 46),
+      ]
+    }
+
+    let horizontal = min(innerRadius * 0.68, 52)
+    let vertical = innerRadius * 0.25
+    let xValues: [CGFloat] = [0, -horizontal, horizontal]
+    let yValues: [CGFloat] = [
+      -vertical * 3,
+      -vertical * 2,
+      -vertical,
+      0,
+      vertical,
+      vertical * 2,
+      vertical * 3,
+    ]
+    return yValues.flatMap { y in
+      xValues.map { x in CGPoint(x: x, y: y) }
+    }
+  }
+
+  private func labelCollisionRect(
+    center: CGPoint,
+    size: CGSize
+  ) -> CGRect {
+    CGRect(
+      x: center.x - size.width / 2,
+      y: center.y - size.height / 2,
+      width: size.width,
+      height: size.height
+    )
+    .insetBy(dx: -1, dy: -1)
+  }
 }
 
 extension CGPoint {
   fileprivate func scaled(by amount: CGFloat) -> CGPoint {
     CGPoint(x: x * amount, y: y * amount)
+  }
+
+  fileprivate func distance(to other: CGPoint) -> CGFloat {
+    hypot(x - other.x, y - other.y)
   }
 }

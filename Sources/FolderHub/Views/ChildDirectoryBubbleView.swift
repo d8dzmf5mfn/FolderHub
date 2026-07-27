@@ -5,8 +5,11 @@ struct ChildDirectoryBubbleView: View {
 
   @State private var isHovered = false
   @State private var isDragHandleHovered = false
+  @Bindable private var glassAppearance = GlassAppearanceStore.shared
 
-  private let glassOpticalOpacity = 0.55
+  private var glassOpticalOpacity: Double {
+    glassAppearance.opticalOpacity
+  }
 
   var body: some View {
     ZStack {
@@ -35,7 +38,7 @@ struct ChildDirectoryBubbleView: View {
     )
     .onHover { isHovered = $0 }
     .allowsWindowActivationEvents(true)
-    .accessibilityLabel("\(store.title) folder contents")
+    .accessibilityElement(children: .contain)
   }
 
   private var dragHeader: some View {
@@ -48,6 +51,78 @@ struct ChildDirectoryBubbleView: View {
           .truncationMode(.middle)
 
         Spacer(minLength: 0)
+
+        Button {
+          store.togglePinned()
+        } label: {
+          Image(systemName: store.isPinned ? "pin.fill" : "pin")
+            .font(.system(size: 8.5, weight: .bold))
+            .foregroundStyle(
+              store.isPinned
+                ? Color.accentColor.opacity(0.72)
+                : Color.primary.opacity(0.42)
+            )
+            .frame(
+              width: HubWindowControls.childHitDiameter,
+              height: HubWindowControls.childHitDiameter
+            )
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .background(
+          Circle()
+            .fill(
+              store.isPinned
+                ? Color.accentColor.opacity(0.08)
+                : Color.primary.opacity(isHovered ? 0.07 : 0.035)
+            )
+        )
+        .frame(
+          width: HubWindowControls.childHitDiameter,
+          height: HubWindowControls.childHitDiameter
+        )
+        .contentShape(Circle())
+        .zIndex(20)
+        .allowsHitTesting(true)
+        .allowsWindowActivationEvents(true)
+        .help(store.isPinned ? "Unpin \(store.title)" : "Keep on top")
+        .accessibilityLabel(
+          store.isPinned
+            ? "Unpin \(store.title) branch"
+            : "Pin \(store.title) branch"
+        )
+        .accessibilityValue(store.isPinned ? "On top" : "Normal level")
+
+        Button {
+          store.close()
+        } label: {
+          Image(systemName: "xmark")
+            .font(.system(size: 8.5, weight: .bold))
+            .foregroundStyle(Color.primary.opacity(0.42))
+            .frame(
+              width: HubWindowControls.childHitDiameter,
+              height: HubWindowControls.childHitDiameter
+            )
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .background(
+          Circle()
+            .fill(Color.primary.opacity(isHovered ? 0.07 : 0.035))
+        )
+        .frame(
+          width: HubWindowControls.childHitDiameter,
+          height: HubWindowControls.childHitDiameter
+        )
+        .contentShape(Circle())
+        .zIndex(20)
+        .allowsHitTesting(true)
+        .allowsWindowActivationEvents(true)
+        .help("Close \(store.title) branch")
+        .accessibilityLabel("Close \(store.title) branch")
+        .accessibilityHint(
+          "Closes this folder bubble and its child branches"
+        )
       }
 
       BranchDragAffordance(
@@ -163,8 +238,12 @@ struct ChildDirectoryBubbleView: View {
         store.reveal(item)
       }
     }
+    .onDrag {
+      FileDragProvider.make(for: item.url)
+    }
     .accessibilityLabel(item.name)
     .accessibilityValue(item.isNavigableDirectory ? "Folder" : "File")
+    .accessibilityHint("Drag to share with another app")
   }
 
   private var bubbleShape: RoundedRectangle {

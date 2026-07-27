@@ -21,11 +21,11 @@ enum HubSizingPolicy {
     case 2:
       124
     case 3...4:
-      140
-    case 5...8:
       152
+    case 5...8:
+      176
     default:
-      166
+      208
     }
   }
 }

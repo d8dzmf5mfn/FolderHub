@@ -9,6 +9,7 @@ final class ChildDirectoryStore {
   private(set) var selectedItemID: URL?
   private(set) var isLoading = true
   private(set) var errorMessage: String?
+  private(set) var isPinned = false
 
   @ObservationIgnored private let directoryService = DirectoryService()
   @ObservationIgnored private let workspace = WorkspaceService()
@@ -17,6 +18,8 @@ final class ChildDirectoryStore {
   @ObservationIgnored private var watcherDebounceTask: Task<Void, Never>?
 
   @ObservationIgnored var onOpenDirectory: ((URL) -> Void)?
+  @ObservationIgnored var onClose: (() -> Void)?
+  @ObservationIgnored var onPinChange: ((Bool) -> Void)?
 
   init(directoryURL: URL) {
     self.directoryURL = directoryURL
@@ -67,6 +70,15 @@ final class ChildDirectoryStore {
 
   func revealDirectory() {
     workspace.reveal(directoryURL)
+  }
+
+  func close() {
+    onClose?()
+  }
+
+  func togglePinned() {
+    isPinned.toggle()
+    onPinChange?(isPinned)
   }
 
   func refresh() {
