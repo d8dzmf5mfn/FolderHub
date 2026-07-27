@@ -41,6 +41,7 @@ final class HubStore {
   @ObservationIgnored private let managedLibrary = ManagedLibraryService()
   @ObservationIgnored private let workspace = WorkspaceService()
   @ObservationIgnored private let watcher = FSEventWatcher()
+  @ObservationIgnored private let libraryWatcher = FSEventWatcher()
   @ObservationIgnored private let launchAtLogin = LaunchAtLoginService()
   @ObservationIgnored private var activeSecurityScopedURL: URL?
   @ObservationIgnored private var activeSecurityScopeStarted = false
@@ -48,6 +49,7 @@ final class HubStore {
   @ObservationIgnored private var collapseTask: Task<Void, Never>?
   @ObservationIgnored private var refreshTask: Task<Void, Never>?
   @ObservationIgnored private var watcherDebounceTask: Task<Void, Never>?
+  @ObservationIgnored private var libraryWatcherDebounceTask: Task<Void, Never>?
   @ObservationIgnored private var librarySyncTask: Task<Void, Never>?
   @ObservationIgnored private var noticeTask: Task<Void, Never>?
   @ObservationIgnored private var undoExpiryTask: Task<Void, Never>?
@@ -140,7 +142,19 @@ final class HubStore {
   func synchronizeManagedLibrary() {
     librarySyncTask?.cancel()
     librarySyncTask = Task { [weak self] in
-      await self?.reconcileManagedLibrary()
+      guard let self else { return }
+      do {
+        try await self.managedLibrary.ensureLibraryExists()
+        guard !Task.isCancelled else { return }
+        self.startManagedLibraryWatcher()
+        await self.reconcileManagedLibrary()
+      } catch {
+        guard !Task.isCancelled else { return }
+        self.showNotice(
+          "Couldn’t monitor FolderHubLibrary: \(error.localizedDescription)",
+          duration: .seconds(8)
+        )
+      }
     }
   }
 
@@ -250,22 +264,13 @@ final class HubStore {
       let managedURLs = try await managedLibrary.managedFolderURLs()
       guard !Task.isCancelled else { return }
 
-      var updatedFolders = folders
-      var recoveredCount = 0
+      var discoveredRecords: [ManagedFolderRecord] = []
       var firstFailure: String?
 
       for url in managedURLs {
-        guard updatedFolders.count < Self.maximumFolderCount else { break }
         do {
           let record = try bookmarkStore.makeRecord(for: url)
-          let isRegistered = updatedFolders.contains {
-            $0.resourceIdentifier == record.resourceIdentifier
-              || URL(fileURLWithPath: $0.lastKnownPath).standardizedFileURL
-                == url.standardizedFileURL
-          }
-          guard !isRegistered else { continue }
-          updatedFolders.append(record)
-          recoveredCount += 1
+          discoveredRecords.append(record)
         } catch {
           firstFailure =
             firstFailure
@@ -274,19 +279,37 @@ final class HubStore {
       }
 
       guard !Task.isCancelled else { return }
-      if recoveredCount > 0 {
-        try saveState(folders: updatedFolders)
-        folders = updatedFolders
+      let reconciliation = ManagedLibraryReconciler(
+        rootURL: managedLibrary.rootURL
+      ).reconcile(
+        existing: folders,
+        discovered: discoveredRecords,
+        maximumCount: Self.maximumFolderCount
+      )
+      if reconciliation.folders != folders {
+        try saveState(folders: reconciliation.folders)
+        clearSelectionIfRemoved(reconciliation.removedIDs)
+        folders = reconciliation.folders
         updateFolderLayout()
       }
 
       if let firstFailure {
         showNotice(firstFailure, duration: .seconds(8))
-      } else if recoveredCount > 0 {
+      } else if reconciliation.addedCount > 0
+        && !reconciliation.removedIDs.isEmpty
+      {
+        showNotice("Synced FolderHubLibrary.")
+      } else if reconciliation.addedCount > 0 {
         showNotice(
-          recoveredCount == 1
+          reconciliation.addedCount == 1
             ? "Recovered 1 folder from FolderHubLibrary."
-            : "Recovered \(recoveredCount) folders from FolderHubLibrary."
+            : "Recovered \(reconciliation.addedCount) folders from FolderHubLibrary."
+        )
+      } else if !reconciliation.removedIDs.isEmpty {
+        showNotice(
+          reconciliation.removedIDs.count == 1
+            ? "Removed 1 folder that left FolderHubLibrary."
+            : "Removed \(reconciliation.removedIDs.count) folders that left FolderHubLibrary."
         )
       }
     } catch {
@@ -832,6 +855,52 @@ final class HubStore {
         }
       }
     }
+  }
+
+  private func startManagedLibraryWatcher() {
+    let rootURL = managedLibrary.rootURL
+    let reconciler = ManagedLibraryReconciler(rootURL: rootURL)
+    libraryWatcher.start(
+      watching: rootURL,
+      onEvents: { [weak self] eventPaths in
+        guard reconciler.affectsMembership(eventPaths: eventPaths) else {
+          return
+        }
+
+        DispatchQueue.main.async {
+          self?.libraryWatcherDebounceTask?.cancel()
+          self?.libraryWatcherDebounceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            self?.synchronizeManagedLibrary()
+          }
+        }
+      }
+    )
+  }
+
+  private func clearSelectionIfRemoved(_ removedIDs: Set<UUID>) {
+    guard let selectedFolderID, removedIDs.contains(selectedFolderID) else {
+      return
+    }
+
+    selectionTask?.cancel()
+    collapseTask?.cancel()
+    refreshTask?.cancel()
+    watcherDebounceTask?.cancel()
+    watcher.stop()
+    deactivateSecurityScope()
+
+    if isBranchDetached {
+      isBranchDetached = false
+      onCloseDetachedBranch?()
+    }
+    phase = .idle
+    self.selectedFolderID = nil
+    navigationPath = []
+    directoryItems = []
+    selectedItemID = nil
+    renameItemID = nil
   }
 
   private func deactivateSecurityScope() {
