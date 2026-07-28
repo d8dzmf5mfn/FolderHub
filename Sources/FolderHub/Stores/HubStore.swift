@@ -14,7 +14,6 @@ final class HubStore {
   private(set) var phase: HubInteractionPhase = .idle
   private(set) var selectedFolderID: UUID?
   private(set) var isBranchDetached = false
-  private(set) var branchDirection = CGVector(dx: 1, dy: 0)
   private(set) var directoryItems: [DirectoryItem] = []
   private(set) var folderChildCounts: [UUID: Int] = [:]
   private(set) var bubbleSize = HubPresentationMetrics.rootSize
@@ -153,12 +152,7 @@ final class HubStore {
   }
 
   var presentationMetrics: HubPresentationMetrics {
-    selectedFolderID == nil || isBranchDetached
-      ? .collapsed(hubSize: hubSize)
-      : .expanded(
-        hubSize: hubSize,
-        direction: branchDirection
-      )
+    .collapsed(hubSize: hubSize)
   }
 
   func chooseAndAddFolder() {
@@ -496,14 +490,10 @@ final class HubStore {
     directoryItems = []
     selectedItemID = nil
     selectedFolderID = id
+    isBranchDetached = true
     phase = .selecting
-
-    branchDirection = CGVector(dx: 1, dy: 0)
     onPresentationMetricsChange?(
-      .expanded(
-        hubSize: hubSize,
-        direction: branchDirection
-      ),
+      .collapsed(hubSize: hubSize),
       true
     )
 
@@ -521,6 +511,7 @@ final class HubStore {
         persist()
       }
       refreshDirectory()
+      onDetachBranch?(.zero)
     } catch {
       showNotice(error.localizedDescription)
       collapse()
@@ -577,17 +568,6 @@ final class HubStore {
         true
       )
     }
-  }
-
-  func detachSelectedBranch(offset: CGSize) {
-    guard selectedFolderID != nil, !isBranchDetached else { return }
-    isBranchDetached = true
-    phase = .idle
-    onDetachBranch?(offset)
-    onPresentationMetricsChange?(
-      .collapsed(hubSize: hubSize),
-      false
-    )
   }
 
   private func notifyPresentationMetricsChanged() {

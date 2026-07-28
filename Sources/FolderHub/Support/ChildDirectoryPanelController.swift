@@ -118,7 +118,7 @@ final class ChildDirectoryPanelController {
     ]
     panel.level = FolderHubWindowPinning.level(isPinned: false)
 
-    let hostingView = NSHostingView(
+    let hostingView = FirstMouseHostingView(
       rootView: ChildDirectoryBubbleView(
         store: store,
         resizeState: resizeState

@@ -93,9 +93,6 @@ struct DraggableBranchHostTests {
     #expect(changes.isEmpty == false)
     #expect(changes.last == CGSize(width: 66, height: 36))
     #expect(endingTranslation == CGSize(width: 66, height: 36))
-    if let endingTranslation {
-      #expect(BranchDragPolicy.shouldDetach(endingTranslation))
-    }
     #expect(pressStates.contains(true))
     #expect(pressStates.last == false)
   }

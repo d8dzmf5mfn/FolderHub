@@ -26,7 +26,9 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     super.init()
 
     configurePanel()
-    let hostingView = NSHostingView(rootView: HubRootView(store: store))
+    let hostingView = FirstMouseHostingView(
+      rootView: HubRootView(store: store)
+    )
     hostingView.frame = panel.contentView?.bounds ?? .zero
     hostingView.autoresizingMask = [.width, .height]
     panel.contentView = hostingView
@@ -210,14 +212,14 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
   }
 
   private func detachBranch(offset: CGSize) {
-    guard let branchCenter = metrics.branchCenter else { return }
-    let draggedCenter = CGPoint(
-      x: branchCenter.x + offset.width,
-      y: branchCenter.y + offset.height
+    let currentHubPoint = hubScreenPoint(for: metrics, in: panel.frame)
+    let branchCenter = HubPresentationMetrics.independentBranchCenter(
+      hubCenter: currentHubPoint,
+      hubSize: metrics.hubSize
     )
     let screenPoint = CGPoint(
-      x: panel.frame.minX + draggedCenter.x,
-      y: panel.frame.maxY - draggedCenter.y
+      x: branchCenter.x + offset.width,
+      y: branchCenter.y - offset.height
     )
 
     closeDetachedBranch()
@@ -243,8 +245,8 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
       }
       parentFrame = parentController.frame
     } else {
-      guard let rootBranchFrame else { return }
-      parentFrame = rootBranchFrame
+      guard let detachedBranchController else { return }
+      parentFrame = detachedBranchController.frame
     }
 
     let registration = childDirectoryHierarchy.register(
@@ -272,21 +274,6 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     controller.show(
       adjacentTo: parentFrame,
       avoiding: occupiedFrames
-    )
-  }
-
-  private var rootBranchFrame: CGRect? {
-    guard let branchCenter = metrics.branchCenter else { return nil }
-    let size = metrics.branchVisualSize
-    let screenCenter = CGPoint(
-      x: panel.frame.minX + branchCenter.x,
-      y: panel.frame.maxY - branchCenter.y
-    )
-    return CGRect(
-      x: screenCenter.x - size.width / 2,
-      y: screenCenter.y - size.height / 2,
-      width: size.width,
-      height: size.height
     )
   }
 

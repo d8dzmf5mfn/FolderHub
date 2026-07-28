@@ -15,7 +15,7 @@ final class DetachedBranchPanelController {
     store: HubStore,
     onReturnToHub: @escaping () -> Void
   ) {
-    resizeState = BubbleResizeState(size: store.bubbleSize)
+    resizeState = BubbleResizeState()
     let size = HubPresentationMetrics.branchWindowSize(
       for: resizeState.size
     )
@@ -48,7 +48,7 @@ final class DetachedBranchPanelController {
       onDragChanged: { _ in },
       onDragEnded: { _ in }
     )
-    let hostingView = NSHostingView(rootView: rootView)
+    let hostingView = FirstMouseHostingView(rootView: rootView)
     hostingView.frame = CGRect(origin: .zero, size: size)
     hostingView.autoresizingMask = [.width, .height]
     panel.contentView = hostingView
