@@ -32,60 +32,57 @@ enum HubSizingPolicy {
 
 struct HubPresentationMetrics: Equatable, Sendable {
   static let branchSize = CGSize(width: 190, height: 144)
+  static let rootSize = branchSize
+  static let bubbleCornerRadius: CGFloat = 48
   static let branchInteractionOutset: CGFloat = 12
   static let branchDragLimit: CGFloat = 72
   static let branchDetachThreshold: CGFloat = 58
   static let padding: CGFloat = 18
 
-  let hubDiameter: CGFloat
+  let hubSize: CGSize
   let canvasSize: CGSize
   let hubCenter: CGPoint
   let branchCenter: CGPoint?
-  let connectorCenter: CGPoint?
-  let connectorAngle: AngleValue
 
-  static func collapsed(hubDiameter: CGFloat) -> HubPresentationMetrics {
+  static func collapsed(
+    hubSize: CGSize = rootSize
+  ) -> HubPresentationMetrics {
     HubPresentationMetrics(
-      hubDiameter: hubDiameter,
+      hubSize: hubSize,
       canvasSize: CGSize(
-        width: hubDiameter + padding * 2,
-        height: hubDiameter + padding * 2
+        width: hubSize.width + padding * 2,
+        height: hubSize.height + padding * 2
       ),
       hubCenter: CGPoint(
-        x: hubDiameter / 2 + padding,
-        y: hubDiameter / 2 + padding
+        x: hubSize.width / 2 + padding,
+        y: hubSize.height / 2 + padding
       ),
-      branchCenter: nil,
-      connectorCenter: nil,
-      connectorAngle: .zero
+      branchCenter: nil
     )
   }
 
   static func expanded(
-    hubDiameter: CGFloat,
+    hubSize: CGSize = rootSize,
     direction rawDirection: CGVector
   ) -> HubPresentationMetrics {
     let direction = rawDirection.normalized(or: CGVector(dx: 1, dy: 0))
-    let hubRadius = hubDiameter / 2
+    let hubHalfExtent =
+      abs(direction.dx) * hubSize.width / 2
+      + abs(direction.dy) * hubSize.height / 2
     let branchHalfExtent =
       abs(direction.dx) * branchSize.width / 2
       + abs(direction.dy) * branchSize.height / 2
-    let branchDistance = hubRadius + branchHalfExtent + 18
+    let branchDistance = hubHalfExtent + branchHalfExtent + 18
     let branchCenterFromHub = CGPoint(
       x: direction.dx * branchDistance,
       y: direction.dy * branchDistance
     )
-    let connectorDistance = branchDistance / 2
-    let connectorCenterFromHub = CGPoint(
-      x: direction.dx * connectorDistance,
-      y: direction.dy * connectorDistance
-    )
 
     let hubRect = CGRect(
-      x: -hubRadius,
-      y: -hubRadius,
-      width: hubDiameter,
-      height: hubDiameter
+      x: -hubSize.width / 2,
+      y: -hubSize.height / 2,
+      width: hubSize.width,
+      height: hubSize.height
     )
     let branchRect = CGRect(
       x: branchCenterFromHub.x - branchSize.width / 2,
@@ -102,19 +99,12 @@ struct HubPresentationMetrics: Equatable, Sendable {
 
     let translation = CGPoint(x: -bounds.minX, y: -bounds.minY)
     return HubPresentationMetrics(
-      hubDiameter: hubDiameter,
+      hubSize: hubSize,
       canvasSize: bounds.size,
       hubCenter: translation,
       branchCenter: CGPoint(
         x: branchCenterFromHub.x + translation.x,
         y: branchCenterFromHub.y + translation.y
-      ),
-      connectorCenter: CGPoint(
-        x: connectorCenterFromHub.x + translation.x,
-        y: connectorCenterFromHub.y + translation.y
-      ),
-      connectorAngle: AngleValue(
-        radians: atan2(direction.dy, direction.dx)
       )
     )
   }
@@ -145,11 +135,6 @@ enum BranchDragPolicy {
       height: offset.height * scale
     )
   }
-}
-
-struct AngleValue: Equatable, Sendable {
-  let radians: Double
-  static let zero = AngleValue(radians: 0)
 }
 
 extension CGVector {

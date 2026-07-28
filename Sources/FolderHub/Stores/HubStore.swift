@@ -14,7 +14,7 @@ final class HubStore {
   private(set) var phase: HubInteractionPhase = .idle
   private(set) var selectedFolderID: UUID?
   private(set) var isBranchDetached = false
-  private(set) var branchDirection = CGVector(dx: 1, dy: -0.25)
+  private(set) var branchDirection = CGVector(dx: 1, dy: 0)
   private(set) var directoryItems: [DirectoryItem] = []
   private(set) var selectedItemID: URL?
   private(set) var navigationPath: [URL] = []
@@ -95,6 +95,10 @@ final class HubStore {
     layoutEngine.recommendedHubDiameter(folders: folders)
   }
 
+  var hubSize: CGSize {
+    HubPresentationMetrics.rootSize
+  }
+
   var currentDirectory: URL? {
     navigationPath.last
   }
@@ -110,9 +114,9 @@ final class HubStore {
 
   var presentationMetrics: HubPresentationMetrics {
     selectedFolderID == nil || isBranchDetached
-      ? .collapsed(hubDiameter: hubDiameter)
+      ? .collapsed(hubSize: hubSize)
       : .expanded(
-        hubDiameter: hubDiameter,
+        hubSize: hubSize,
         direction: branchDirection
       )
   }
@@ -436,9 +440,7 @@ final class HubStore {
       onCloseDetachedBranch?()
     }
 
-    guard let recordIndex = folders.firstIndex(where: { $0.id == id }),
-      let label = layout.labels[id]
-    else {
+    guard let recordIndex = folders.firstIndex(where: { $0.id == id }) else {
       return
     }
 
@@ -452,16 +454,10 @@ final class HubStore {
     selectedFolderID = id
     phase = .selecting
 
-    let vector = CGVector(
-      dx: label.centerOffset.x,
-      dy: label.centerOffset.y
-    )
-    branchDirection = vector.normalized(
-      or: fallbackDirection(for: folders[recordIndex])
-    )
+    branchDirection = CGVector(dx: 1, dy: 0)
     onPresentationMetricsChange?(
       .expanded(
-        hubDiameter: hubDiameter,
+        hubSize: hubSize,
         direction: branchDirection
       ),
       true
@@ -516,7 +512,7 @@ final class HubStore {
       directoryItems = []
       selectedItemID = nil
       onPresentationMetricsChange?(
-        .collapsed(hubDiameter: hubDiameter),
+        .collapsed(hubSize: hubSize),
         true
       )
       return
@@ -533,7 +529,7 @@ final class HubStore {
       self.directoryItems = []
       self.selectedItemID = nil
       self.onPresentationMetricsChange?(
-        .collapsed(hubDiameter: self.hubDiameter),
+        .collapsed(hubSize: self.hubSize),
         true
       )
     }
@@ -545,7 +541,7 @@ final class HubStore {
     phase = .idle
     onDetachBranch?(offset)
     onPresentationMetricsChange?(
-      .collapsed(hubDiameter: hubDiameter),
+      .collapsed(hubSize: hubSize),
       false
     )
   }
@@ -909,11 +905,6 @@ final class HubStore {
     }
     activeSecurityScopedURL = nil
     activeSecurityScopeStarted = false
-  }
-
-  private func fallbackDirection(for record: ManagedFolderRecord) -> CGVector {
-    let angle = Double(record.layoutSeed % 6_283) / 1_000
-    return CGVector(dx: cos(angle), dy: sin(angle))
   }
 
   private func conflictResolution(for destination: URL)

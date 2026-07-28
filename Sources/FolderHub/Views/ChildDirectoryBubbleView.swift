@@ -247,7 +247,10 @@ struct ChildDirectoryBubbleView: View {
   }
 
   private var bubbleShape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: 48, style: .continuous)
+    RoundedRectangle(
+      cornerRadius: HubPresentationMetrics.bubbleCornerRadius,
+      style: .continuous
+    )
   }
 
   static var size: CGSize {

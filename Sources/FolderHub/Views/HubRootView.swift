@@ -34,26 +34,6 @@ struct HubRootView: View {
 
   var body: some View {
     ZStack {
-      HubBlobShape(
-        metrics: metrics,
-        hubDiameter: store.hubDiameter,
-        progress: blobProgress,
-        branchOffset: branchOffset
-      )
-      .fill(.clear)
-      .glassEffect(
-        .clear
-          .tint(isDropTargeted ? Color.accentColor.opacity(0.1) : nil)
-          .interactive(),
-        in: HubBlobShape(
-          metrics: metrics,
-          hubDiameter: store.hubDiameter,
-          progress: blobProgress,
-          branchOffset: branchOffset
-        )
-      )
-      .opacity(glassOpticalOpacity)
-
       hub
 
       if store.selectedFolderID != nil, !store.isBranchDetached {
@@ -65,7 +45,7 @@ struct HubRootView: View {
           .position(
             x: metrics.hubCenter.x,
             y: metrics.hubCenter.y
-              + store.hubDiameter / 2 - 23
+              + metrics.hubSize.height / 2 + 8
           )
           .transition(.opacity.combined(with: .scale(scale: 0.96)))
       }
@@ -74,7 +54,7 @@ struct HubRootView: View {
     .contentShape(
       HubBlobShape(
         metrics: metrics,
-        hubDiameter: store.hubDiameter,
+        hubSize: metrics.hubSize,
         progress: blobProgress,
         interactionOutset:
           HubPresentationMetrics.branchInteractionOutset,
@@ -95,11 +75,11 @@ struct HubRootView: View {
     HubSurfaceView(
       store: store,
       isDropTargeted: $isDropTargeted,
-      diameter: store.hubDiameter
+      size: metrics.hubSize
     )
     .frame(
-      width: store.hubDiameter,
-      height: store.hubDiameter
+      width: metrics.hubSize.width,
+      height: metrics.hubSize.height
     )
     .position(metrics.hubCenter)
   }
@@ -110,33 +90,36 @@ struct HubRootView: View {
       x: baseCenter.x + branchOffset.width,
       y: baseCenter.y + branchOffset.height
     )
-    let direction = CGVector(
-      dx: finalCenter.x - metrics.hubCenter.x,
-      dy: finalCenter.y - metrics.hubCenter.y
-    ).normalized(or: CGVector(dx: 1, dy: 0))
-    let hubRadius = store.hubDiameter / 2
-    let origin = CGPoint(
-      x: metrics.hubCenter.x + direction.dx * (hubRadius - 12),
-      y: metrics.hubCenter.y + direction.dy * (hubRadius - 12)
-    )
     let amount = min(max(blobProgress, 0), 1)
     let center = CGPoint(
-      x: origin.x + (finalCenter.x - origin.x) * amount,
-      y: origin.y + (finalCenter.y - origin.y) * amount
+      x: metrics.hubCenter.x
+        + (finalCenter.x - metrics.hubCenter.x) * amount,
+      y: metrics.hubCenter.y
+        + (finalCenter.y - metrics.hubCenter.y) * amount
     )
 
-    return DraggableBranchHost(
-      store: store,
-      onChanged: updateBranchDrag,
-      onEnded: finishBranchDrag,
-      onHoverChanged: { isBranchHovered = $0 },
-      onPressChanged: { isBranchPressed = $0 }
-    )
+    return ZStack {
+      bubbleShape
+        .fill(.clear)
+        .glassEffect(
+          .clear.interactive(),
+          in: bubbleShape
+        )
+        .opacity(glassOpticalOpacity)
+
+      DraggableBranchHost(
+        store: store,
+        onChanged: updateBranchDrag,
+        onEnded: finishBranchDrag,
+        onHoverChanged: { isBranchHovered = $0 },
+        onPressChanged: { isBranchPressed = $0 }
+      )
+    }
     .frame(
       width: HubPresentationMetrics.branchSize.width,
       height: HubPresentationMetrics.branchSize.height
     )
-    .contentShape(Rectangle())
+    .contentShape(bubbleShape)
     .overlay(alignment: .top) {
       BranchDragAffordance(
         isHovered: isBranchHovered,
@@ -162,6 +145,13 @@ struct HubRootView: View {
       value: isBranchPressed
     )
     .accessibilityHint("Click and drag this bubble away from the hub")
+  }
+
+  private var bubbleShape: RoundedRectangle {
+    RoundedRectangle(
+      cornerRadius: HubPresentationMetrics.bubbleCornerRadius,
+      style: .continuous
+    )
   }
 
   private func updateBranchDrag(_ translation: CGSize) {
