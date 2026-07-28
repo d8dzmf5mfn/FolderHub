@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChildDirectoryBubbleView: View {
   @Bindable var store: ChildDirectoryStore
+  @Bindable var resizeState: BubbleResizeState
 
   @State private var isHovered = false
   @State private var isDragHandleHovered = false
@@ -13,22 +14,32 @@ struct ChildDirectoryBubbleView: View {
 
   var body: some View {
     ZStack {
-      bubbleShape
-        .fill(.clear)
-        .glassEffect(
-          .clear.interactive(),
-          in: bubbleShape
-        )
-        .opacity(glassOpticalOpacity)
+      ZStack {
+        bubbleShape
+          .fill(.clear)
+          .glassEffect(
+            .clear.interactive(),
+            in: bubbleShape
+          )
+          .opacity(glassOpticalOpacity)
 
-      VStack(spacing: 0) {
-        dragHeader
-        contents
+        VStack(spacing: 0) {
+          dragHeader
+          contents
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
+      .frame(width: currentVisualSize.width, height: currentVisualSize.height)
+      .contentShape(bubbleShape)
+      .overlay(alignment: .bottomTrailing) {
+        BubbleResizeHandle(
+          size: resizeState.size,
+          onResize: resizeState.resize
+        )
+      }
     }
-    .frame(width: Self.size.width, height: Self.size.height)
+    .frame(width: currentWindowSize.width, height: currentWindowSize.height)
     .contentShape(bubbleShape)
     .scaleEffect(isHovered ? 1.008 : 1)
     .brightness(isHovered ? 0.02 : 0)
@@ -165,7 +176,7 @@ struct ChildDirectoryBubbleView: View {
             childRow(item)
           }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, DragCollisionMetrics.listContentSpacing)
       }
       .scrollIndicators(.hidden)
       .scrollBounceBehavior(.basedOnSize)
@@ -195,23 +206,35 @@ struct ChildDirectoryBubbleView: View {
     return Button {
       store.activate(item)
     } label: {
-      Text(item.name)
-        .font(
-          .system(
-            size: 12,
-            weight: isSelected ? .semibold : .regular
+      HStack(spacing: 6) {
+        Text(item.name)
+          .font(
+            .system(
+              size: 12,
+              weight: isSelected ? .semibold : .regular
+            )
           )
-        )
-        .foregroundStyle(
-          isSelected
-            ? Color.accentColor.opacity(0.78)
-            : Color.primary.opacity(0.64)
-        )
-        .lineLimit(1)
-        .truncationMode(.middle)
-        .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
-        .padding(.horizontal, 3)
-        .contentShape(Rectangle())
+          .foregroundStyle(
+            isSelected
+              ? Color.accentColor.opacity(0.78)
+              : Color.primary.opacity(0.64)
+          )
+          .lineLimit(1)
+          .truncationMode(.middle)
+
+        Spacer(minLength: 0)
+
+        if let count = item.visibleChildCount {
+          DirectoryItemCountBadge(count: count)
+        }
+      }
+      .frame(
+        maxWidth: .infinity,
+        minHeight: DragCollisionMetrics.folderRowHitHeight,
+        alignment: .leading
+      )
+      .padding(.horizontal, 3)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .simultaneousGesture(
@@ -242,8 +265,15 @@ struct ChildDirectoryBubbleView: View {
       FileDragProvider.make(for: item.url)
     }
     .accessibilityLabel(item.name)
-    .accessibilityValue(item.isNavigableDirectory ? "Folder" : "File")
+    .accessibilityValue(accessibilityValue(for: item))
     .accessibilityHint("Drag to share with another app")
+  }
+
+  private func accessibilityValue(for item: DirectoryItem) -> String {
+    guard let count = item.visibleChildCount else {
+      return item.isNavigableDirectory ? "Folder" : "File"
+    }
+    return "Folder, \(count) items"
   }
 
   private var bubbleShape: RoundedRectangle {
@@ -253,11 +283,12 @@ struct ChildDirectoryBubbleView: View {
     )
   }
 
-  static var size: CGSize {
-    let outset = HubPresentationMetrics.branchInteractionOutset
-    return CGSize(
-      width: HubPresentationMetrics.branchSize.width + outset * 2,
-      height: HubPresentationMetrics.branchSize.height + outset * 2
-    )
+  private var currentVisualSize: CGSize {
+    resizeState.size
   }
+
+  private var currentWindowSize: CGSize {
+    HubPresentationMetrics.branchWindowSize(for: currentVisualSize)
+  }
+
 }

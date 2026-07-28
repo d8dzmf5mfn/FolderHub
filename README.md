@@ -71,7 +71,7 @@ the archive against `SHA256SUMS`.
 ## Package a release
 
 ```bash
-./script/package_release.sh 0.1.3
+./script/package_release.sh 0.1.4
 ```
 
 The script builds a universal app, applies an ad-hoc signature, validates the

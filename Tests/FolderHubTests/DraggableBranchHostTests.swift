@@ -6,6 +6,30 @@ import Testing
 @Suite("Draggable branch host")
 @MainActor
 struct DraggableBranchHostTests {
+  @Test("Folder content begins below the drag handle")
+  func folderContentClearsDragHandle() {
+    #expect(
+      DragCollisionMetrics.branchContentTopInset
+        == DragCollisionMetrics.branchHitSize.height
+        + DragCollisionMetrics.listContentSpacing
+    )
+    #expect(
+      DragCollisionMetrics.branchContentTopInset
+        > DragCollisionMetrics.branchHitSize.height
+    )
+  }
+
+  @Test("Folder clicks are not delayed by the drag recognizer")
+  func folderClicksAreImmediate() {
+    let container = DraggableBranchContainerView()
+    let recognizer = container.gestureRecognizers
+      .compactMap { $0 as? NSPanGestureRecognizer }
+      .first
+
+    #expect(recognizer != nil)
+    #expect(recognizer?.delaysPrimaryMouseButtonEvents == false)
+  }
+
   @Test("Pan reaches container through a child hit target")
   func panThroughChildView() {
     let panel = NSPanel(
@@ -130,6 +154,7 @@ struct DraggableBranchHostTests {
   func preventsPanelBackgroundMove() {
     let container = DraggableBranchContainerView()
     #expect(container.mouseDownCanMoveWindow == false)
+    #expect(container.isFlipped == false)
   }
 
   @Test("Window drag collision view receives its mouse-down event")

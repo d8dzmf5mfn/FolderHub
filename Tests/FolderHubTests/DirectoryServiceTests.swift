@@ -14,9 +14,16 @@ struct DirectoryServiceTests {
       at: root.appendingPathComponent("Beta"),
       withIntermediateDirectories: false
     )
+    let alpha = root.appendingPathComponent("Alpha")
     try FileManager.default.createDirectory(
-      at: root.appendingPathComponent("Alpha"),
+      at: alpha,
       withIntermediateDirectories: false
+    )
+    try Data("child".utf8).write(
+      to: alpha.appendingPathComponent("Visible.txt")
+    )
+    try Data("hidden".utf8).write(
+      to: alpha.appendingPathComponent(".Hidden.txt")
     )
     try Data("z".utf8).write(to: root.appendingPathComponent("Zulu.md"))
     try Data("a".utf8).write(to: root.appendingPathComponent("Alpha.md"))
@@ -29,5 +36,15 @@ struct DirectoryServiceTests {
     #expect(visible.map(\.name) == ["Alpha", "Beta", "Alpha.md", "Zulu.md"])
     #expect(visible.allSatisfy { !$0.isHidden })
     #expect(all.contains { $0.name == ".Hidden" && $0.isHidden })
+    #expect(
+      visible.first(where: { $0.name == "Alpha" })?.visibleChildCount == 1
+    )
+    #expect(
+      all.first(where: { $0.name == "Alpha" })?.visibleChildCount == 2
+    )
+    #expect(
+      visible.first(where: { $0.name == "Alpha.md" })?.visibleChildCount
+        == nil
+    )
   }
 }

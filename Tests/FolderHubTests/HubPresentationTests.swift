@@ -36,15 +36,18 @@ struct HubPresentationTests {
     #expect(metrics.branchCenter!.y == metrics.hubCenter.y)
   }
 
-  @Test("Root and branch glass paths stay disconnected")
-  func disconnectedGlassPath() {
+  @Test(
+    "Root and branch stay disconnected throughout expansion",
+    arguments: [CGFloat(0.1), 0.25, 0.5, 0.75, 1]
+  )
+  func disconnectedGlassPath(_ progress: CGFloat) {
     let metrics = HubPresentationMetrics.expanded(
       direction: CGVector(dx: 1, dy: 0)
     )
     let shape = HubBlobShape(
       metrics: metrics,
       hubSize: metrics.hubSize,
-      progress: 1
+      progress: progress
     )
     let path = shape.path(
       in: CGRect(origin: .zero, size: metrics.canvasSize)
@@ -66,7 +69,6 @@ struct HubPresentationTests {
     let rootSize = HubPresentationMetrics.rootSize
 
     #expect(metrics.hubSize == rootSize)
-    #expect(rootSize == HubPresentationMetrics.branchSize)
     #expect(
       abs(
         metrics.canvasSize.width
@@ -79,6 +81,40 @@ struct HubPresentationTests {
           - rootSize.height - HubPresentationMetrics.padding * 2
       ) < 0.001
     )
+  }
+
+  @Test("Child bubble sizes change independently")
+  @MainActor
+  func independentBubbleSizes() {
+    let parent = BubbleResizeState()
+    let child = BubbleResizeState()
+
+    parent.resize(to: CGSize(width: 260, height: 196))
+
+    #expect(parent.size == CGSize(width: 260, height: 196))
+    #expect(child.size == HubPresentationMetrics.branchSize)
+  }
+
+  @Test("Bubble resizing cannot shrink below the shared default")
+  func minimumBubbleSize() {
+    #expect(
+      BubbleResizePolicy.clamped(CGSize(width: 120, height: 240))
+        == CGSize(width: 190, height: 240)
+    )
+    #expect(
+      BubbleResizePolicy.clamped(CGSize(width: 300, height: 90))
+        == CGSize(width: 300, height: 144)
+    )
+  }
+
+  @Test("Resize corner keeps a clear pointer target")
+  func resizeCornerTarget() {
+    #expect(BubbleResizeMetrics.hitSize >= 32)
+    #expect(BubbleResizeMetrics.visualSize == 24)
+    #expect(BubbleResizeMetrics.glyphSize == 13)
+    #expect(BubbleResizeMetrics.hitSize > BubbleResizeMetrics.visualSize)
+    #expect(BubbleResizeMetrics.visualSize > BubbleResizeMetrics.glyphSize)
+    #expect(HubPresentationMetrics.bubbleCornerRadius == 24)
   }
 
   @Test("Branch interaction extends beyond the visible glass")
@@ -117,38 +153,29 @@ struct HubPresentationTests {
     )
   }
 
-  @Test("Dragged branch stays separate and inside its canvas")
-  func draggedBranchGeometry() {
-    let metrics = HubPresentationMetrics.expanded(
-      direction: CGVector(dx: 0.8, dy: -0.35)
+  @Test("Branch drag follows the pointer without a movement limit")
+  func unrestrictedBranchDrag() {
+    let translation = CGSize(width: 240, height: -180)
+    let destination = BranchDragPolicy.destination(
+      settledOffset: CGSize(width: 12, height: 8),
+      translation: translation
     )
-    let offset = BranchDragPolicy.clamped(
-      CGSize(width: 90, height: -60)
-    )
-    let shape = HubBlobShape(
-      metrics: metrics,
-      hubSize: metrics.hubSize,
-      progress: 1,
-      branchOffset: offset
-    )
-    let path = shape.path(
-      in: CGRect(origin: .zero, size: metrics.canvasSize)
-    )
-    let draggedCenter = CGPoint(
-      x: metrics.branchCenter!.x + offset.width,
-      y: metrics.branchCenter!.y + offset.height
-    )
-    let bounds = path.boundingRect
 
-    #expect(path.contains(metrics.hubCenter))
-    #expect(path.contains(draggedCenter))
-    #expect(bounds.minX >= 0)
-    #expect(bounds.minY >= 0)
-    #expect(bounds.maxX <= metrics.canvasSize.width)
-    #expect(bounds.maxY <= metrics.canvasSize.height)
+    #expect(destination == CGSize(width: 252, height: -172))
+  }
+
+  @Test("Branch detaches equally in every drag direction")
+  func symmetricBranchDetach() {
+    let threshold = HubPresentationMetrics.branchDetachThreshold
+
+    #expect(BranchDragPolicy.shouldDetach(CGSize(width: 0, height: threshold)))
+    #expect(BranchDragPolicy.shouldDetach(CGSize(width: 0, height: -threshold)))
+    #expect(BranchDragPolicy.shouldDetach(CGSize(width: threshold, height: 0)))
+    #expect(BranchDragPolicy.shouldDetach(CGSize(width: -threshold, height: 0)))
     #expect(
-      hypot(offset.width, offset.height)
-        <= HubPresentationMetrics.branchDragLimit + 0.001
+      !BranchDragPolicy.shouldDetach(
+        CGSize(width: 0, height: threshold - 1)
+      )
     )
   }
 }

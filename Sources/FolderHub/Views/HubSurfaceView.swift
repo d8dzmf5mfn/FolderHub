@@ -35,6 +35,12 @@ struct HubSurfaceView: View {
     }
     .frame(width: size.width, height: size.height)
     .contentShape(bubbleShape)
+    .overlay(alignment: .bottomTrailing) {
+      BubbleResizeHandle(
+        size: store.bubbleSize,
+        onResize: store.resizeBubbles
+      )
+    }
     .scaleEffect(isHovered ? 1.008 : 1)
     .brightness(isHovered ? 0.02 : 0)
     .animation(
@@ -105,7 +111,7 @@ struct HubSurfaceView: View {
             folderRow(folder)
           }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, DragCollisionMetrics.listContentSpacing)
       }
       .scrollIndicators(.hidden)
       .scrollBounceBehavior(.basedOnSize)
@@ -204,23 +210,35 @@ struct HubSurfaceView: View {
     return Button {
       store.selectFolder(folder.id)
     } label: {
-      Text(folder.displayName)
-        .font(
-          .system(
-            size: 12,
-            weight: isSelected ? .semibold : .regular
+      HStack(spacing: 6) {
+        Text(folder.displayName)
+          .font(
+            .system(
+              size: 12,
+              weight: isSelected ? .semibold : .regular
+            )
           )
-        )
-        .foregroundStyle(
-          isSelected
-            ? Color.accentColor.opacity(0.78)
-            : Color.primary.opacity(0.64)
-        )
-        .lineLimit(1)
-        .truncationMode(.middle)
-        .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
-        .padding(.horizontal, 3)
-        .contentShape(Rectangle())
+          .foregroundStyle(
+            isSelected
+              ? Color.accentColor.opacity(0.78)
+              : Color.primary.opacity(0.64)
+          )
+          .lineLimit(1)
+          .truncationMode(.middle)
+
+        Spacer(minLength: 0)
+
+        if let count = store.childCount(for: folder.id) {
+          DirectoryItemCountBadge(count: count)
+        }
+      }
+      .frame(
+        maxWidth: .infinity,
+        minHeight: DragCollisionMetrics.folderRowHitHeight,
+        alignment: .leading
+      )
+      .padding(.horizontal, 3)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .background(
@@ -247,7 +265,17 @@ struct HubSurfaceView: View {
       }
     }
     .accessibilityLabel(folder.displayName)
+    .accessibilityValue(accessibilityValue(for: folder))
     .accessibilityHint("Opens the folder inside Folder Hub")
+  }
+
+  private func accessibilityValue(
+    for folder: ManagedFolderRecord
+  ) -> String {
+    guard let count = store.childCount(for: folder.id) else {
+      return "Folder"
+    }
+    return "Folder, \(count) items"
   }
 
   private var bubbleShape: RoundedRectangle {

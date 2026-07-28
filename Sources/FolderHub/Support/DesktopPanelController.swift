@@ -277,7 +277,7 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
 
   private var rootBranchFrame: CGRect? {
     guard let branchCenter = metrics.branchCenter else { return nil }
-    let size = HubPresentationMetrics.branchSize
+    let size = metrics.branchVisualSize
     let screenCenter = CGPoint(
       x: panel.frame.minX + branchCenter.x,
       y: panel.frame.maxY - branchCenter.y

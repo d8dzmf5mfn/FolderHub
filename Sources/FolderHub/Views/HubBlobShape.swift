@@ -47,18 +47,12 @@ struct HubBlobShape: Shape {
     )
     let amount = min(max(progress, 0), 1)
     guard amount > 0.001 else { return result }
-    let branchCenter = CGPoint(
-      x: metrics.hubCenter.x
-        + (finalBranchCenter.x - metrics.hubCenter.x) * amount,
-      y: metrics.hubCenter.y
-        + (finalBranchCenter.y - metrics.hubCenter.y) * amount
-    )
     let scale = 0.72 + 0.28 * amount
-    let branchWidth = HubPresentationMetrics.branchSize.width * scale
-    let branchHeight = HubPresentationMetrics.branchSize.height * scale
+    let branchWidth = metrics.branchVisualSize.width * scale
+    let branchHeight = metrics.branchVisualSize.height * scale
     let branchRect = CGRect(
-      x: branchCenter.x - branchWidth / 2,
-      y: branchCenter.y - branchHeight / 2,
+      x: finalBranchCenter.x - branchWidth / 2,
+      y: finalBranchCenter.y - branchHeight / 2,
       width: branchWidth,
       height: branchHeight
     )
@@ -72,7 +66,7 @@ struct HubBlobShape: Shape {
         HubPresentationMetrics.bubbleCornerRadius * scale
     )
 
-    result = result.union(branch)
+    result.addPath(branch)
     return result
   }
 }

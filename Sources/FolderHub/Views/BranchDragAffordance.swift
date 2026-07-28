@@ -4,6 +4,12 @@ enum DragCollisionMetrics {
   static let hubHitDiameter: CGFloat = 32
   static let hubDotDiameter: CGFloat = 7
   static let branchHitSize = CGSize(width: 56, height: 28)
+  static let listContentSpacing: CGFloat = 5
+  static let folderRowHitHeight: CGFloat = 22
+
+  static var branchContentTopInset: CGFloat {
+    branchHitSize.height + listContentSpacing
+  }
 
   static func branchHitRect(in bounds: CGRect) -> CGRect {
     CGRect(

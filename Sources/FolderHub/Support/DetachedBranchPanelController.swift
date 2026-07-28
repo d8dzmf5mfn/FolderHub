@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class DetachedBranchPanelController {
   private let panel: HubPanel
+  private let resizeState: BubbleResizeState
   private var dragStartOrigin: CGPoint?
 
   var frame: CGRect {
@@ -14,10 +15,9 @@ final class DetachedBranchPanelController {
     store: HubStore,
     onReturnToHub: @escaping () -> Void
   ) {
-    let outset = HubPresentationMetrics.branchInteractionOutset
-    let size = CGSize(
-      width: HubPresentationMetrics.branchSize.width + outset * 2,
-      height: HubPresentationMetrics.branchSize.height + outset * 2
+    resizeState = BubbleResizeState(size: store.bubbleSize)
+    let size = HubPresentationMetrics.branchWindowSize(
+      for: resizeState.size
     )
     panel = HubPanel(
       contentRect: CGRect(origin: .zero, size: size),
@@ -43,6 +43,7 @@ final class DetachedBranchPanelController {
 
     let rootView = DetachedBranchBubbleView(
       store: store,
+      resizeState: resizeState,
       onReturnToHub: onReturnToHub,
       onDragChanged: { _ in },
       onDragEnded: { _ in }
@@ -54,6 +55,7 @@ final class DetachedBranchPanelController {
 
     hostingView.rootView = DetachedBranchBubbleView(
       store: store,
+      resizeState: resizeState,
       onReturnToHub: onReturnToHub,
       onDragChanged: { [weak self] translation in
         self?.movePanel(with: translation)
@@ -72,6 +74,9 @@ final class DetachedBranchPanelController {
     }
     panel.onTrash = { [weak store] in
       store?.trashSelectedItem()
+    }
+    resizeState.onResize = { [weak self] visualSize in
+      self?.resizePanel(to: visualSize)
     }
   }
 
@@ -97,6 +102,23 @@ final class DetachedBranchPanelController {
 
   func close() {
     panel.orderOut(nil)
+  }
+
+  private func resizePanel(to visualSize: CGSize) {
+    let newSize = HubPresentationMetrics.branchWindowSize(
+      for: visualSize
+    )
+    guard panel.frame.size != newSize else { return }
+    let center = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+    panel.setFrame(
+      CGRect(
+        x: center.x - newSize.width / 2,
+        y: center.y - newSize.height / 2,
+        width: newSize.width,
+        height: newSize.height
+      ),
+      display: true
+    )
   }
 
   private func movePanel(with translation: CGSize) {

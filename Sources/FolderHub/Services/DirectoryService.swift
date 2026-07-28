@@ -24,14 +24,25 @@ struct DirectoryService: Sendable {
     )
     return try urls.map { url in
       let values = try url.resourceValues(forKeys: keys)
+      let isDirectory = values.isDirectory == true
+      let isPackage = values.isPackage == true
+      let isSymbolicLink = values.isSymbolicLink == true
+      let isNavigableDirectory =
+        isDirectory && !isPackage && !isSymbolicLink
       return DirectoryItem(
         url: url,
         name: values.name ?? url.lastPathComponent,
-        isDirectory: values.isDirectory == true,
-        isPackage: values.isPackage == true,
-        isSymbolicLink: values.isSymbolicLink == true,
+        isDirectory: isDirectory,
+        isPackage: isPackage,
+        isSymbolicLink: isSymbolicLink,
         isHidden: values.isHidden == true,
-        modifiedAt: values.contentModificationDate
+        modifiedAt: values.contentModificationDate,
+        visibleChildCount: isNavigableDirectory
+          ? childCount(
+            of: url,
+            showHiddenFiles: showHiddenFiles
+          )
+          : nil
       )
     }
     .filter { showHiddenFiles || !$0.isHidden }
@@ -40,6 +51,23 @@ struct DirectoryService: Sendable {
         return left.isNavigableDirectory
       }
       return left.name.localizedStandardCompare(right.name) == .orderedAscending
+    }
+  }
+
+  func childCount(
+    of directory: URL,
+    showHiddenFiles: Bool
+  ) -> Int? {
+    var options: FileManager.DirectoryEnumerationOptions = []
+    if !showHiddenFiles {
+      options.insert(.skipsHiddenFiles)
+    }
+    return autoreleasepool {
+      try? FileManager.default.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: nil,
+        options: options
+      ).count
     }
   }
 }

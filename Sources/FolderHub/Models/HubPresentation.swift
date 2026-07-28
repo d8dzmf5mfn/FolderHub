@@ -33,13 +33,23 @@ enum HubSizingPolicy {
 struct HubPresentationMetrics: Equatable, Sendable {
   static let branchSize = CGSize(width: 190, height: 144)
   static let rootSize = branchSize
-  static let bubbleCornerRadius: CGFloat = 48
+  static let bubbleCornerRadius: CGFloat = 24
   static let branchInteractionOutset: CGFloat = 12
-  static let branchDragLimit: CGFloat = 72
-  static let branchDetachThreshold: CGFloat = 58
+  static let branchDetachThreshold: CGFloat = 44
   static let padding: CGFloat = 18
+  static var branchWindowSize: CGSize {
+    branchWindowSize(for: branchSize)
+  }
+
+  static func branchWindowSize(for visualSize: CGSize) -> CGSize {
+    CGSize(
+      width: visualSize.width + branchInteractionOutset * 2,
+      height: visualSize.height + branchInteractionOutset * 2
+    )
+  }
 
   let hubSize: CGSize
+  let branchVisualSize: CGSize
   let canvasSize: CGSize
   let hubCenter: CGPoint
   let branchCenter: CGPoint?
@@ -49,6 +59,7 @@ struct HubPresentationMetrics: Equatable, Sendable {
   ) -> HubPresentationMetrics {
     HubPresentationMetrics(
       hubSize: hubSize,
+      branchVisualSize: hubSize,
       canvasSize: CGSize(
         width: hubSize.width + padding * 2,
         height: hubSize.height + padding * 2
@@ -70,8 +81,8 @@ struct HubPresentationMetrics: Equatable, Sendable {
       abs(direction.dx) * hubSize.width / 2
       + abs(direction.dy) * hubSize.height / 2
     let branchHalfExtent =
-      abs(direction.dx) * branchSize.width / 2
-      + abs(direction.dy) * branchSize.height / 2
+      abs(direction.dx) * hubSize.width / 2
+      + abs(direction.dy) * hubSize.height / 2
     let branchDistance = hubHalfExtent + branchHalfExtent + 18
     let branchCenterFromHub = CGPoint(
       x: direction.dx * branchDistance,
@@ -85,13 +96,13 @@ struct HubPresentationMetrics: Equatable, Sendable {
       height: hubSize.height
     )
     let branchRect = CGRect(
-      x: branchCenterFromHub.x - branchSize.width / 2,
-      y: branchCenterFromHub.y - branchSize.height / 2,
-      width: branchSize.width,
-      height: branchSize.height
+      x: branchCenterFromHub.x - hubSize.width / 2,
+      y: branchCenterFromHub.y - hubSize.height / 2,
+      width: hubSize.width,
+      height: hubSize.height
     )
     let expandedPadding =
-      padding + branchInteractionOutset + branchDragLimit
+      padding + branchInteractionOutset + branchDetachThreshold
     let bounds = hubRect.union(branchRect).insetBy(
       dx: -expandedPadding,
       dy: -expandedPadding
@@ -100,6 +111,7 @@ struct HubPresentationMetrics: Equatable, Sendable {
     let translation = CGPoint(x: -bounds.minX, y: -bounds.minY)
     return HubPresentationMetrics(
       hubSize: hubSize,
+      branchVisualSize: hubSize,
       canvasSize: bounds.size,
       hubCenter: translation,
       branchCenter: CGPoint(
@@ -110,29 +122,28 @@ struct HubPresentationMetrics: Equatable, Sendable {
   }
 }
 
+enum BubbleResizePolicy {
+  static func clamped(_ proposed: CGSize) -> CGSize {
+    CGSize(
+      width: max(HubPresentationMetrics.rootSize.width, proposed.width),
+      height: max(HubPresentationMetrics.rootSize.height, proposed.height)
+    )
+  }
+}
+
 enum BranchDragPolicy {
   static func shouldDetach(_ offset: CGSize) -> Bool {
     hypot(offset.width, offset.height)
       >= HubPresentationMetrics.branchDetachThreshold
   }
 
-  static func resisted(_ translation: CGSize) -> CGSize {
+  static func destination(
+    settledOffset: CGSize,
+    translation: CGSize
+  ) -> CGSize {
     CGSize(
-      width: translation.width * 0.86,
-      height: translation.height * 0.86
-    )
-  }
-
-  static func clamped(_ offset: CGSize) -> CGSize {
-    let magnitude = hypot(offset.width, offset.height)
-    let limit = HubPresentationMetrics.branchDragLimit
-    guard magnitude > limit, magnitude > 0 else {
-      return offset
-    }
-    let scale = limit / magnitude
-    return CGSize(
-      width: offset.width * scale,
-      height: offset.height * scale
+      width: settledOffset.width + translation.width,
+      height: settledOffset.height + translation.height
     )
   }
 }

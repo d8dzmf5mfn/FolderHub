@@ -36,6 +36,7 @@ func makeDirectoryItem(at url: URL, isDirectory: Bool = false) -> DirectoryItem 
     isPackage: false,
     isSymbolicLink: false,
     isHidden: false,
-    modifiedAt: nil
+    modifiedAt: nil,
+    visibleChildCount: nil
   )
 }

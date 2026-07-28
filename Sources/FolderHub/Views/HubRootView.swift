@@ -20,15 +20,9 @@ struct HubRootView: View {
   }
 
   private var branchOffset: CGSize {
-    BranchDragPolicy.clamped(
-      CGSize(
-        width:
-          settledBranchOffset.width
-          + liveBranchTranslation.width,
-        height:
-          settledBranchOffset.height
-          + liveBranchTranslation.height
-      )
+    BranchDragPolicy.destination(
+      settledOffset: settledBranchOffset,
+      translation: liveBranchTranslation
     )
   }
 
@@ -91,12 +85,6 @@ struct HubRootView: View {
       y: baseCenter.y + branchOffset.height
     )
     let amount = min(max(blobProgress, 0), 1)
-    let center = CGPoint(
-      x: metrics.hubCenter.x
-        + (finalCenter.x - metrics.hubCenter.x) * amount,
-      y: metrics.hubCenter.y
-        + (finalCenter.y - metrics.hubCenter.y) * amount
-    )
 
     return ZStack {
       bubbleShape
@@ -116,8 +104,8 @@ struct HubRootView: View {
       )
     }
     .frame(
-      width: HubPresentationMetrics.branchSize.width,
-      height: HubPresentationMetrics.branchSize.height
+      width: metrics.branchVisualSize.width,
+      height: metrics.branchVisualSize.height
     )
     .contentShape(bubbleShape)
     .overlay(alignment: .top) {
@@ -128,13 +116,19 @@ struct HubRootView: View {
       .allowsHitTesting(false)
       .accessibilityHidden(true)
     }
+    .overlay(alignment: .bottomTrailing) {
+      BubbleResizeHandle(
+        size: store.bubbleSize,
+        onResize: store.resizeBubbles
+      )
+    }
     .scaleEffect(
       (0.72 + 0.28 * amount)
         * (isBranchPressed ? 0.985 : isBranchHovered ? 1.012 : 1)
     )
     .brightness(isBranchHovered ? 0.025 : 0)
     .opacity(amount)
-    .position(center)
+    .position(finalCenter)
     .allowsHitTesting(store.phase == .expanded)
     .animation(
       .interactiveSpring(duration: 0.24, extraBounce: 0.2),
@@ -155,16 +149,13 @@ struct HubRootView: View {
   }
 
   private func updateBranchDrag(_ translation: CGSize) {
-    liveBranchTranslation = BranchDragPolicy.resisted(translation)
+    liveBranchTranslation = translation
   }
 
   private func finishBranchDrag(_ translation: CGSize) {
-    let resisted = BranchDragPolicy.resisted(translation)
-    let destination = BranchDragPolicy.clamped(
-      CGSize(
-        width: settledBranchOffset.width + resisted.width,
-        height: settledBranchOffset.height + resisted.height
-      )
+    let destination = BranchDragPolicy.destination(
+      settledOffset: settledBranchOffset,
+      translation: translation
     )
     liveBranchTranslation = .zero
     if BranchDragPolicy.shouldDetach(destination) {
