@@ -12,6 +12,7 @@ struct BubbleResizeHandle: View {
   let onResize: (CGSize) -> Void
 
   @State private var dragStartSize: CGSize?
+  @State private var dragStartPointer: CGPoint?
   @State private var isHovered = false
 
   var body: some View {
@@ -67,27 +68,29 @@ struct BubbleResizeHandle: View {
     }
     .gesture(
       DragGesture(minimumDistance: 0)
-        .onChanged { value in
+        .onChanged { _ in
+          let currentPointer = NSEvent.mouseLocation
           if dragStartSize == nil {
             dragStartSize = size
+            dragStartPointer = currentPointer
           }
-          guard let dragStartSize else { return }
+          guard let dragStartSize, let dragStartPointer else { return }
           onResize(
-            BubbleResizePolicy.clamped(
-              CGSize(
-                width: dragStartSize.width + value.translation.width * 2,
-                height: dragStartSize.height + value.translation.height * 2
-              )
+            BubbleResizeDragPolicy.proposedSize(
+              startSize: dragStartSize,
+              startPointer: dragStartPointer,
+              currentPointer: currentPointer
             )
           )
         }
         .onEnded { _ in
           dragStartSize = nil
+          dragStartPointer = nil
         }
     )
-    .help("Drag this corner to resize all folder panels")
-    .accessibilityLabel("Resize folder panels")
-    .accessibilityHint("Drag down and right to make every panel larger")
+    .help("Drag this corner to resize this folder panel")
+    .accessibilityLabel("Resize folder panel")
+    .accessibilityHint("Drag down and right to make this panel larger")
   }
 }
 

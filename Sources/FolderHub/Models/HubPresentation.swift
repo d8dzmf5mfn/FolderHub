@@ -91,3 +91,32 @@ enum BubbleResizePolicy {
     )
   }
 }
+
+enum BubbleResizeDragPolicy {
+  static func proposedSize(
+    startSize: CGSize,
+    startPointer: CGPoint,
+    currentPointer: CGPoint
+  ) -> CGSize {
+    BubbleResizePolicy.clamped(
+      CGSize(
+        width: startSize.width + currentPointer.x - startPointer.x,
+        height: startSize.height + startPointer.y - currentPointer.y
+      )
+    )
+  }
+}
+
+enum BubblePanelResizePolicy {
+  static func topLeftAnchoredFrame(
+    from currentFrame: CGRect,
+    to newSize: CGSize
+  ) -> CGRect {
+    CGRect(
+      x: currentFrame.minX,
+      y: currentFrame.maxY - newSize.height,
+      width: newSize.width,
+      height: newSize.height
+    )
+  }
+}

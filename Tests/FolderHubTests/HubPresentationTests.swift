@@ -69,6 +69,49 @@ struct HubPresentationTests {
     )
   }
 
+  @Test("Resize drag uses stable screen coordinates without amplification")
+  func stableScreenCoordinateResize() {
+    let proposed = BubbleResizeDragPolicy.proposedSize(
+      startSize: CGSize(width: 190, height: 144),
+      startPointer: CGPoint(x: 500, y: 500),
+      currentPointer: CGPoint(x: 560, y: 450)
+    )
+
+    #expect(proposed == CGSize(width: 250, height: 194))
+  }
+
+  @Test("Resize growth stays monotonic as the pointer moves down and right")
+  func monotonicResizeGrowth() {
+    let startSize = CGSize(width: 190, height: 144)
+    let startPointer = CGPoint(x: 500, y: 500)
+    let first = BubbleResizeDragPolicy.proposedSize(
+      startSize: startSize,
+      startPointer: startPointer,
+      currentPointer: CGPoint(x: 520, y: 480)
+    )
+    let second = BubbleResizeDragPolicy.proposedSize(
+      startSize: startSize,
+      startPointer: startPointer,
+      currentPointer: CGPoint(x: 540, y: 460)
+    )
+
+    #expect(second.width > first.width)
+    #expect(second.height > first.height)
+  }
+
+  @Test("Panel resizing keeps its top-left corner fixed")
+  func topLeftAnchoredPanelResize() {
+    let currentFrame = CGRect(x: 100, y: 200, width: 214, height: 168)
+    let resized = BubblePanelResizePolicy.topLeftAnchoredFrame(
+      from: currentFrame,
+      to: CGSize(width: 274, height: 218)
+    )
+
+    #expect(resized.minX == currentFrame.minX)
+    #expect(resized.maxY == currentFrame.maxY)
+    #expect(resized.size == CGSize(width: 274, height: 218))
+  }
+
   @Test("Resize corner keeps a clear pointer target")
   func resizeCornerTarget() {
     #expect(BubbleResizeMetrics.hitSize >= 32)

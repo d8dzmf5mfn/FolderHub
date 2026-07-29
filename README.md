@@ -32,9 +32,9 @@ The Codex desktop Run action uses the same script. Optional modes:
   `~/FolderHubLibrary/Inbox`. Inbox is added to the Hub automatically.
 - Click a folder name to open its compact, scrollable contents in a separate
   spring-animated glass tree beside the Hub.
-- Drag the outer glass edge of an expanded branch beyond the detach threshold
-  to turn it into a standalone desktop bubble. Use Escape, Collapse, or
-  **Return to Hub** from its context menu to close it.
+- Every first-level folder opens immediately as an independent panel. Drag its
+  top handle to move it freely. Use Escape or **Return to Hub** from its context
+  menu to close it.
 - Use the Pin control on the Hub or any child-folder bubble to keep that window
   above other apps. Child bubbles can be pinned independently.
 - Child-folder bubbles stay open when the main branch retracts or changes.
@@ -71,7 +71,7 @@ the archive against `SHA256SUMS`.
 ## Package a release
 
 ```bash
-./script/package_release.sh 0.1.5
+./script/package_release.sh 0.1.6
 ```
 
 The script builds a universal app, applies an ad-hoc signature, validates the

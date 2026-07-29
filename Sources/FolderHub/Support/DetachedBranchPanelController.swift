@@ -109,13 +109,10 @@ final class DetachedBranchPanelController {
       for: visualSize
     )
     guard panel.frame.size != newSize else { return }
-    let center = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
     panel.setFrame(
-      CGRect(
-        x: center.x - newSize.width / 2,
-        y: center.y - newSize.height / 2,
-        width: newSize.width,
-        height: newSize.height
+      BubblePanelResizePolicy.topLeftAnchoredFrame(
+        from: panel.frame,
+        to: newSize
       ),
       display: true
     )
