@@ -75,6 +75,7 @@ struct BranchView: View {
               isSymbolicLink: false,
               isHidden: false,
               modifiedAt: nil,
+              byteSize: nil,
               visibleChildCount: nil
             )
           )
@@ -154,10 +155,14 @@ private struct BranchRowView: View {
       isTargeted: $isDropTargeted
     ) { providers in
       guard item.isNavigableDirectory else { return false }
-      loadDroppedURLs(providers) { urls in
-        store.moveDroppedItems(urls, to: item)
+      return FileDropProviderLoader.loadURLs(from: providers) { result in
+        if !result.urls.isEmpty {
+          store.moveDroppedItems(result.urls, to: item)
+        }
+        if result.unreadableItemCount > 0 {
+          store.reportUnreadableDrop(result.unreadableItemCount)
+        }
       }
-      return true
     }
     .contextMenu {
       Button(item.isNavigableDirectory ? "Open Here" : "Open") {
@@ -195,41 +200,4 @@ private struct BranchRowView: View {
     return "Folder, \(count) items"
   }
 
-  private func loadDroppedURLs(
-    _ providers: [NSItemProvider],
-    completion: @escaping ([URL]) -> Void
-  ) {
-    let group = DispatchGroup()
-    let lock = NSLock()
-    var urls: [URL] = []
-
-    for provider in providers {
-      group.enter()
-      provider.loadItem(
-        forTypeIdentifier: UTType.fileURL.identifier,
-        options: nil
-      ) { item, _ in
-        defer { group.leave() }
-        let url: URL?
-        if let data = item as? Data {
-          url = URL(dataRepresentation: data, relativeTo: nil)
-        } else if let value = item as? URL {
-          url = value
-        } else if let value = item as? NSURL {
-          url = value as URL
-        } else {
-          url = nil
-        }
-        if let url {
-          lock.lock()
-          urls.append(url)
-          lock.unlock()
-        }
-      }
-    }
-
-    group.notify(queue: .main) {
-      completion(urls)
-    }
-  }
 }

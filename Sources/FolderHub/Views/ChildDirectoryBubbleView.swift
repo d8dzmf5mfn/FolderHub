@@ -27,7 +27,10 @@ struct ChildDirectoryBubbleView: View {
           dragHeader
           contents
         }
-        .padding(.horizontal, 12)
+        .padding(
+          .horizontal,
+          DragCollisionMetrics.childHeaderHorizontalPadding
+        )
         .padding(.vertical, 8)
       }
       .frame(width: currentVisualSize.width, height: currentVisualSize.height)
@@ -54,7 +57,26 @@ struct ChildDirectoryBubbleView: View {
 
   private var dragHeader: some View {
     ZStack {
-      HStack {
+      BranchDragAffordance(
+        isHovered: isDragHandleHovered,
+        isPressed: false,
+        hitSize: DragCollisionMetrics.childBranchHitSize
+      )
+      .overlay {
+        WindowDragHitBox()
+      }
+      .onHover { isDragHandleHovered = $0 }
+      .accessibilityElement()
+      .accessibilityLabel("Move \(store.title) branch")
+      .accessibilityHint("Drag to move this branch")
+
+      HStack(spacing: DragCollisionMetrics.childHeaderControlSpacing) {
+        DirectorySortMenu(
+          order: store.sortOrder,
+          onChange: store.setSortOrder
+        )
+        .zIndex(20)
+
         Text(store.title)
           .font(.system(size: 10.5, weight: .semibold))
           .foregroundStyle(Color.primary.opacity(0.5))
@@ -135,18 +157,7 @@ struct ChildDirectoryBubbleView: View {
           "Closes this folder bubble and its child branches"
         )
       }
-
-      BranchDragAffordance(
-        isHovered: isDragHandleHovered,
-        isPressed: false
-      )
-      .overlay {
-        WindowDragHitBox()
-      }
-      .onHover { isDragHandleHovered = $0 }
-      .accessibilityElement()
-      .accessibilityLabel("Move \(store.title) branch")
-      .accessibilityHint("Drag to move this branch")
+      .zIndex(20)
     }
     .frame(height: DragCollisionMetrics.branchHitSize.height)
   }

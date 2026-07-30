@@ -19,6 +19,25 @@ struct DraggableBranchHostTests {
     )
   }
 
+  @Test("Child sort and window controls do not overlap drag area")
+  func childHeaderControlsClearDragArea() {
+    let panelWidth = HubPresentationMetrics.rootSize.width
+    let dragRect = DragCollisionMetrics.childHeaderDragRect(
+      panelWidth: panelWidth
+    )
+    let sortRect = DragCollisionMetrics.childHeaderSortRect(
+      panelWidth: panelWidth
+    )
+    let windowControlsRect =
+      DragCollisionMetrics.childHeaderWindowControlsRect(
+        panelWidth: panelWidth
+      )
+
+    #expect(!dragRect.intersects(sortRect))
+    #expect(!dragRect.intersects(windowControlsRect))
+    #expect(!sortRect.intersects(windowControlsRect))
+  }
+
   @Test("Folder clicks are not delayed by the drag recognizer")
   func folderClicksAreImmediate() {
     let container = DraggableBranchContainerView()

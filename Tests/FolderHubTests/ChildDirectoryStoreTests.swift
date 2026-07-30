@@ -63,6 +63,39 @@ struct ChildDirectoryStoreTests {
     )
   }
 
+  @Test("Selected sort order survives file system refreshes")
+  func sortOrderSurvivesRefresh() async throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data("a".utf8).write(to: root.appendingPathComponent("Alpha.txt"))
+    try Data("z".utf8).write(to: root.appendingPathComponent("Zulu.txt"))
+
+    let store = ChildDirectoryStore(directoryURL: root)
+    #expect(
+      await waitUntil {
+        store.items.map(\.name) == ["Alpha.txt", "Zulu.txt"]
+      }
+    )
+
+    store.setSortOrder(
+      DirectorySortOrder(
+        criterion: .name,
+        direction: .descending
+      )
+    )
+    #expect(store.items.map(\.name) == ["Zulu.txt", "Alpha.txt"])
+
+    try await Task.sleep(for: .milliseconds(750))
+    try Data("m".utf8).write(to: root.appendingPathComponent("Middle.txt"))
+
+    #expect(
+      await waitUntil {
+        store.items.map(\.name)
+          == ["Zulu.txt", "Middle.txt", "Alpha.txt"]
+      }
+    )
+  }
+
   private func waitUntil(
     _ condition: () -> Bool
   ) async -> Bool {

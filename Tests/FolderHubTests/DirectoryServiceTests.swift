@@ -32,8 +32,20 @@ struct DirectoryServiceTests {
     let service = DirectoryService()
     let visible = try service.contents(of: root, showHiddenFiles: false)
     let all = try service.contents(of: root, showHiddenFiles: true)
+    let descendingNames = try service.contents(
+      of: root,
+      showHiddenFiles: false,
+      sortOrder: DirectorySortOrder(
+        criterion: .name,
+        direction: .descending
+      )
+    )
 
     #expect(visible.map(\.name) == ["Alpha", "Beta", "Alpha.md", "Zulu.md"])
+    #expect(
+      descendingNames.map(\.name)
+        == ["Beta", "Alpha", "Zulu.md", "Alpha.md"]
+    )
     #expect(visible.allSatisfy { !$0.isHidden })
     #expect(all.contains { $0.name == ".Hidden" && $0.isHidden })
     #expect(
@@ -46,5 +58,7 @@ struct DirectoryServiceTests {
       visible.first(where: { $0.name == "Alpha.md" })?.visibleChildCount
         == nil
     )
+    #expect(visible.first(where: { $0.name == "Alpha.md" })?.byteSize == 1)
+    #expect(visible.first(where: { $0.name == "Alpha" })?.byteSize != nil)
   }
 }

@@ -46,6 +46,8 @@ The Codex desktop Run action uses the same script. Optional modes:
 - Double-click a file to open it; press Space for Quick Look.
 - Drag any file row from a branch or child bubble into another app to attach or
   upload that file using the standard macOS file drag payload.
+- Use the sort control in a first-level or child-folder tree to order folders
+  and files by name, modification date, or size in either direction.
 - Right-click items for rename, move, new folder, trash, and reveal actions.
 - Press Escape to collapse the branch.
 
@@ -71,7 +73,7 @@ the archive against `SHA256SUMS`.
 ## Package a release
 
 ```bash
-./script/package_release.sh 0.1.6
+./script/package_release.sh 0.1.7
 ```
 
 The script builds a universal app, applies an ad-hoc signature, validates the

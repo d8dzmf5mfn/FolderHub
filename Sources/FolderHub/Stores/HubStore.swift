@@ -20,6 +20,7 @@ final class HubStore {
   private(set) var selectedItemID: URL?
   private(set) var navigationPath: [URL] = []
   private(set) var isLoadingDirectory = false
+  private(set) var directorySortOrder = DirectorySortOrder.default
   private(set) var panelLocation: SavedPanelLocation?
   private(set) var notice: String?
   private(set) var trashedItem: TrashedItem?
@@ -54,6 +55,7 @@ final class HubStore {
   @ObservationIgnored private var libraryWatcherDebounceTask: Task<Void, Never>?
   @ObservationIgnored private var librarySyncTask: Task<Void, Never>?
   @ObservationIgnored private var folderCountsTask: Task<Void, Never>?
+  @ObservationIgnored private var dropImportTask: Task<Void, Never>?
   @ObservationIgnored private var libraryMembershipRefreshPending = false
   @ObservationIgnored private var bubbleSizePersistenceTask: Task<Void, Never>?
   @ObservationIgnored private var noticeTask: Task<Void, Never>?
@@ -171,10 +173,33 @@ final class HubStore {
     }
   }
 
-  func addDroppedItems(_ urls: [URL]) {
-    Task { [weak self] in
-      await self?.importDroppedItems(urls)
+  func addDroppedItems(
+    _ urls: [URL],
+    unreadableItemCount: Int = 0
+  ) {
+    guard !urls.isEmpty else {
+      reportUnreadableDrop(max(unreadableItemCount, 1))
+      return
     }
+
+    let previousImport = dropImportTask
+    dropImportTask = Task { [weak self] in
+      _ = await previousImport?.value
+      guard let self else { return }
+      await self.importDroppedItems(urls)
+      if unreadableItemCount > 0 {
+        self.reportUnreadableDrop(unreadableItemCount)
+      }
+    }
+  }
+
+  func reportUnreadableDrop(_ count: Int) {
+    let itemDescription = count == 1 ? "item" : "items"
+    showNotice(
+      "Couldn’t read \(count) dropped \(itemDescription). "
+        + "Try dragging directly from Finder.",
+      duration: .seconds(8)
+    )
   }
 
   func synchronizeManagedLibrary() {
@@ -372,18 +397,27 @@ final class HubStore {
   }
 
   private func importDroppedItems(_ urls: [URL]) async {
+    let scopedURLs = urls.map {
+      (url: $0, didStartAccess: $0.startAccessingSecurityScopedResource())
+    }
+    defer {
+      for access in scopedURLs where access.didStartAccess {
+        access.url.stopAccessingSecurityScopedResource()
+      }
+    }
+
     var folderURLs: [URL] = []
     var fileURLs: [URL] = []
 
-    for url in urls {
+    for access in scopedURLs {
       do {
-        let values = try url.resourceValues(
+        let values = try access.url.resourceValues(
           forKeys: [.isDirectoryKey]
         )
         if values.isDirectory == true {
-          folderURLs.append(url)
+          folderURLs.append(access.url)
         } else {
-          fileURLs.append(url)
+          fileURLs.append(access.url)
         }
       } catch {
         showNotice(error.localizedDescription)
@@ -819,6 +853,15 @@ final class HubStore {
     setHubPinned(!isHubPinned)
   }
 
+  func setDirectorySortOrder(_ order: DirectorySortOrder) {
+    guard directorySortOrder != order else { return }
+    directorySortOrder = order
+    directoryItems = DirectorySortPolicy.sorted(
+      directoryItems,
+      using: order
+    )
+  }
+
   func clearAllFolders() {
     collapse()
     folderCountsTask?.cancel()
@@ -833,6 +876,7 @@ final class HubStore {
     guard let directory = currentDirectory else { return }
     isLoadingDirectory = true
     let showHiddenFiles = showHiddenFiles
+    let sortOrder = directorySortOrder
     let service = directoryService
 
     refreshTask = Task { [weak self] in
@@ -840,7 +884,8 @@ final class HubStore {
         Result {
           try service.contents(
             of: directory,
-            showHiddenFiles: showHiddenFiles
+            showHiddenFiles: showHiddenFiles,
+            sortOrder: sortOrder
           )
         }
       }.value
@@ -852,9 +897,16 @@ final class HubStore {
       self.isLoadingDirectory = false
       switch result {
       case .success(let items):
-        self.directoryItems = items
+        let displayedItems =
+          sortOrder == self.directorySortOrder
+          ? items
+          : DirectorySortPolicy.sorted(
+            items,
+            using: self.directorySortOrder
+          )
+        self.directoryItems = displayedItems
         if let selectedItemID = self.selectedItemID,
-          !items.contains(where: { $0.id == selectedItemID })
+          !displayedItems.contains(where: { $0.id == selectedItemID })
         {
           self.selectedItemID = nil
         }

@@ -286,32 +286,11 @@ struct HubSurfaceView: View {
   }
 
   private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
-    var accepted = false
-    for provider in providers
-    where provider.hasItemConformingToTypeIdentifier(
-      UTType.fileURL.identifier
-    ) {
-      accepted = true
-      provider.loadItem(
-        forTypeIdentifier: UTType.fileURL.identifier,
-        options: nil
-      ) { item, _ in
-        let url: URL?
-        if let data = item as? Data {
-          url = URL(dataRepresentation: data, relativeTo: nil)
-        } else if let itemURL = item as? URL {
-          url = itemURL
-        } else if let itemURL = item as? NSURL {
-          url = itemURL as URL
-        } else {
-          url = nil
-        }
-        guard let url else { return }
-        Task { @MainActor in
-          store.addDroppedItems([url])
-        }
-      }
+    FileDropProviderLoader.loadURLs(from: providers) { result in
+      store.addDroppedItems(
+        result.urls,
+        unreadableItemCount: result.unreadableItemCount
+      )
     }
-    return accepted
   }
 }

@@ -40,15 +40,28 @@ struct DetachedBranchBubbleView: View {
       )
 
       VStack {
-        BranchDragAffordance(
-          isHovered: isHovered,
-          isPressed: isPressed
-        )
+        ZStack {
+          BranchDragAffordance(
+            isHovered: isHovered,
+            isPressed: isPressed
+          )
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+
+          HStack {
+            Spacer(minLength: 0)
+            DirectorySortMenu(
+              order: store.directorySortOrder,
+              onChange: store.setDirectorySortOrder
+            )
+            .zIndex(20)
+          }
+          .padding(.horizontal, 12)
+        }
         .padding(.top, HubPresentationMetrics.branchInteractionOutset)
-        .accessibilityHidden(true)
+
         Spacer()
       }
-      .allowsHitTesting(false)
 
       BubbleResizeHandle(
         size: resizeState.size,

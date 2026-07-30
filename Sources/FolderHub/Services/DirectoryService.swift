@@ -1,7 +1,11 @@
 import Foundation
 
 struct DirectoryService: Sendable {
-  func contents(of directory: URL, showHiddenFiles: Bool) throws
+  func contents(
+    of directory: URL,
+    showHiddenFiles: Bool,
+    sortOrder: DirectorySortOrder = .default
+  ) throws
     -> [DirectoryItem]
   {
     let keys: Set<URLResourceKey> = [
@@ -11,6 +15,7 @@ struct DirectoryService: Sendable {
       .isSymbolicLinkKey,
       .isHiddenKey,
       .contentModificationDateKey,
+      .fileSizeKey,
     ]
     var options: FileManager.DirectoryEnumerationOptions = []
     if !showHiddenFiles {
@@ -22,7 +27,7 @@ struct DirectoryService: Sendable {
       includingPropertiesForKeys: Array(keys),
       options: options
     )
-    return try urls.map { url in
+    let items = try urls.map { url in
       let values = try url.resourceValues(forKeys: keys)
       let isDirectory = values.isDirectory == true
       let isPackage = values.isPackage == true
@@ -37,6 +42,8 @@ struct DirectoryService: Sendable {
         isSymbolicLink: isSymbolicLink,
         isHidden: values.isHidden == true,
         modifiedAt: values.contentModificationDate,
+        byteSize: values.fileSize.map { Int64($0) }
+          ?? fileSystemEntrySize(of: url),
         visibleChildCount: isNavigableDirectory
           ? childCount(
             of: url,
@@ -46,12 +53,7 @@ struct DirectoryService: Sendable {
       )
     }
     .filter { showHiddenFiles || !$0.isHidden }
-    .sorted { left, right in
-      if left.isNavigableDirectory != right.isNavigableDirectory {
-        return left.isNavigableDirectory
-      }
-      return left.name.localizedStandardCompare(right.name) == .orderedAscending
-    }
+    return DirectorySortPolicy.sorted(items, using: sortOrder)
   }
 
   func childCount(
@@ -69,5 +71,17 @@ struct DirectoryService: Sendable {
         options: options
       ).count
     }
+  }
+
+  private func fileSystemEntrySize(of url: URL) -> Int64? {
+    guard
+      let attributes = try? FileManager.default.attributesOfItem(
+        atPath: url.path
+      ),
+      let size = attributes[.size] as? NSNumber
+    else {
+      return nil
+    }
+    return size.int64Value
   }
 }
