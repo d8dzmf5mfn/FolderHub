@@ -4,6 +4,15 @@ enum DragCollisionMetrics {
   static let hubHitDiameter: CGFloat = 32
   static let hubDotDiameter: CGFloat = 7
   static let branchHitSize = CGSize(width: 56, height: 28)
+  static let childBranchHitSize = CGSize(width: 44, height: 28)
+  static let childHeaderHorizontalPadding: CGFloat = 12
+  static let childHeaderControlSpacing: CGFloat = 0
+  static let listContentSpacing: CGFloat = 5
+  static let folderRowHitHeight: CGFloat = 22
+
+  static var branchContentTopInset: CGFloat {
+    branchHitSize.height + listContentSpacing
+  }
 
   static func branchHitRect(in bounds: CGRect) -> CGRect {
     CGRect(
@@ -11,6 +20,38 @@ enum DragCollisionMetrics {
       y: bounds.maxY - branchHitSize.height,
       width: branchHitSize.width,
       height: branchHitSize.height
+    )
+  }
+
+  static func childHeaderDragRect(panelWidth: CGFloat) -> CGRect {
+    let contentWidth = panelWidth - childHeaderHorizontalPadding * 2
+    return CGRect(
+      x: childHeaderHorizontalPadding
+        + (contentWidth - childBranchHitSize.width) / 2,
+      y: 0,
+      width: childBranchHitSize.width,
+      height: childBranchHitSize.height
+    )
+  }
+
+  static func childHeaderSortRect(panelWidth: CGFloat) -> CGRect {
+    CGRect(
+      x: childHeaderHorizontalPadding,
+      y: 0,
+      width: HubWindowControls.childHitDiameter,
+      height: childBranchHitSize.height
+    )
+  }
+
+  static func childHeaderWindowControlsRect(
+    panelWidth: CGFloat
+  ) -> CGRect {
+    let width = HubWindowControls.childHitDiameter * 2
+    return CGRect(
+      x: panelWidth - childHeaderHorizontalPadding - width,
+      y: 0,
+      width: width,
+      height: childBranchHitSize.height
     )
   }
 }
@@ -63,6 +104,7 @@ struct HubDragCollisionHandle: View {
 struct BranchDragAffordance: View {
   let isHovered: Bool
   let isPressed: Bool
+  var hitSize = DragCollisionMetrics.branchHitSize
 
   var body: some View {
     Capsule(style: .continuous)
@@ -86,8 +128,8 @@ struct BranchDragAffordance: View {
         value: isPressed
       )
       .frame(
-        width: DragCollisionMetrics.branchHitSize.width,
-        height: DragCollisionMetrics.branchHitSize.height
+        width: hitSize.width,
+        height: hitSize.height
       )
       .contentShape(Rectangle())
   }

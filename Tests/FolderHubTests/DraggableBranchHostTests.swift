@@ -6,6 +6,49 @@ import Testing
 @Suite("Draggable branch host")
 @MainActor
 struct DraggableBranchHostTests {
+  @Test("Folder content begins below the drag handle")
+  func folderContentClearsDragHandle() {
+    #expect(
+      DragCollisionMetrics.branchContentTopInset
+        == DragCollisionMetrics.branchHitSize.height
+        + DragCollisionMetrics.listContentSpacing
+    )
+    #expect(
+      DragCollisionMetrics.branchContentTopInset
+        > DragCollisionMetrics.branchHitSize.height
+    )
+  }
+
+  @Test("Child sort and window controls do not overlap drag area")
+  func childHeaderControlsClearDragArea() {
+    let panelWidth = HubPresentationMetrics.rootSize.width
+    let dragRect = DragCollisionMetrics.childHeaderDragRect(
+      panelWidth: panelWidth
+    )
+    let sortRect = DragCollisionMetrics.childHeaderSortRect(
+      panelWidth: panelWidth
+    )
+    let windowControlsRect =
+      DragCollisionMetrics.childHeaderWindowControlsRect(
+        panelWidth: panelWidth
+      )
+
+    #expect(!dragRect.intersects(sortRect))
+    #expect(!dragRect.intersects(windowControlsRect))
+    #expect(!sortRect.intersects(windowControlsRect))
+  }
+
+  @Test("Folder clicks are not delayed by the drag recognizer")
+  func folderClicksAreImmediate() {
+    let container = DraggableBranchContainerView()
+    let recognizer = container.gestureRecognizers
+      .compactMap { $0 as? NSPanGestureRecognizer }
+      .first
+
+    #expect(recognizer != nil)
+    #expect(recognizer?.delaysPrimaryMouseButtonEvents == false)
+  }
+
   @Test("Pan reaches container through a child hit target")
   func panThroughChildView() {
     let panel = NSPanel(
@@ -69,9 +112,6 @@ struct DraggableBranchHostTests {
     #expect(changes.isEmpty == false)
     #expect(changes.last == CGSize(width: 66, height: 36))
     #expect(endingTranslation == CGSize(width: 66, height: 36))
-    if let endingTranslation {
-      #expect(BranchDragPolicy.shouldDetach(endingTranslation))
-    }
     #expect(pressStates.contains(true))
     #expect(pressStates.last == false)
   }
@@ -130,6 +170,7 @@ struct DraggableBranchHostTests {
   func preventsPanelBackgroundMove() {
     let container = DraggableBranchContainerView()
     #expect(container.mouseDownCanMoveWindow == false)
+    #expect(container.isFlipped == false)
   }
 
   @Test("Window drag collision view receives its mouse-down event")

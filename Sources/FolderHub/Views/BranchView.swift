@@ -14,35 +14,41 @@ struct BranchView: View {
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(.secondary)
       } else {
-        ScrollView(.vertical) {
-          LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(store.directoryItems) { item in
-              BranchRowView(store: store, item: item)
+        VStack(spacing: 0) {
+          Color.clear
+            .frame(height: DragCollisionMetrics.branchContentTopInset)
+            .allowsHitTesting(false)
+
+          ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+              ForEach(store.directoryItems) { item in
+                BranchRowView(store: store, item: item)
+              }
             }
+            .padding(.horizontal, 15)
+            .padding(.vertical, DragCollisionMetrics.listContentSpacing)
           }
-          .padding(.horizontal, 15)
-          .padding(.vertical, 8)
+          .scrollIndicators(.hidden)
+          .scrollBounceBehavior(.basedOnSize)
+          .contentShape(
+            .interaction,
+            Rectangle().inset(
+              by: -HubPresentationMetrics.branchInteractionOutset
+            )
+          )
+          .mask(
+            LinearGradient(
+              stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .black, location: 0.09),
+                .init(color: .black, location: 0.91),
+                .init(color: .clear, location: 1),
+              ],
+              startPoint: .top,
+              endPoint: .bottom
+            )
+          )
         }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
-        .contentShape(
-          .interaction,
-          Rectangle().inset(
-            by: -HubPresentationMetrics.branchInteractionOutset
-          )
-        )
-        .mask(
-          LinearGradient(
-            stops: [
-              .init(color: .clear, location: 0),
-              .init(color: .black, location: 0.09),
-              .init(color: .black, location: 0.91),
-              .init(color: .clear, location: 1),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-          )
-        )
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,7 +74,9 @@ struct BranchView: View {
               isPackage: false,
               isSymbolicLink: false,
               isHidden: false,
-              modifiedAt: nil
+              modifiedAt: nil,
+              byteSize: nil,
+              visibleChildCount: nil
             )
           )
         }
@@ -103,18 +111,26 @@ private struct BranchRowView: View {
         Button {
           store.activateItem(item)
         } label: {
-          Text(item.name)
-            .font(
-              .system(
-                size: 12,
-                weight: isSelected ? .semibold : .regular
+          HStack(spacing: 6) {
+            Text(item.name)
+              .font(
+                .system(
+                  size: 12,
+                  weight: isSelected ? .semibold : .regular
+                )
               )
-            )
-            .foregroundStyle(isSelected ? Color.accentColor : .primary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+              .foregroundStyle(isSelected ? Color.accentColor : .primary)
+              .lineLimit(1)
+              .truncationMode(.middle)
+
+            Spacer(minLength: 0)
+
+            if let count = item.visibleChildCount {
+              DirectoryItemCountBadge(count: count)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -124,7 +140,7 @@ private struct BranchRowView: View {
         )
       }
     }
-    .frame(height: 20)
+    .frame(height: DragCollisionMetrics.folderRowHitHeight)
     .padding(.horizontal, 3)
     .background(
       Capsule()
@@ -139,10 +155,14 @@ private struct BranchRowView: View {
       isTargeted: $isDropTargeted
     ) { providers in
       guard item.isNavigableDirectory else { return false }
-      loadDroppedURLs(providers) { urls in
-        store.moveDroppedItems(urls, to: item)
+      return FileDropProviderLoader.loadURLs(from: providers) { result in
+        if !result.urls.isEmpty {
+          store.moveDroppedItems(result.urls, to: item)
+        }
+        if result.unreadableItemCount > 0 {
+          store.reportUnreadableDrop(result.unreadableItemCount)
+        }
       }
-      return true
     }
     .contextMenu {
       Button(item.isNavigableDirectory ? "Open Here" : "Open") {
@@ -169,45 +189,15 @@ private struct BranchRowView: View {
       FileDragProvider.make(for: item.url)
     }
     .accessibilityLabel(item.name)
-    .accessibilityValue(item.isNavigableDirectory ? "Folder" : "File")
+    .accessibilityValue(accessibilityValue)
     .accessibilityHint("Drag to share with another app")
   }
 
-  private func loadDroppedURLs(
-    _ providers: [NSItemProvider],
-    completion: @escaping ([URL]) -> Void
-  ) {
-    let group = DispatchGroup()
-    let lock = NSLock()
-    var urls: [URL] = []
-
-    for provider in providers {
-      group.enter()
-      provider.loadItem(
-        forTypeIdentifier: UTType.fileURL.identifier,
-        options: nil
-      ) { item, _ in
-        defer { group.leave() }
-        let url: URL?
-        if let data = item as? Data {
-          url = URL(dataRepresentation: data, relativeTo: nil)
-        } else if let value = item as? URL {
-          url = value
-        } else if let value = item as? NSURL {
-          url = value as URL
-        } else {
-          url = nil
-        }
-        if let url {
-          lock.lock()
-          urls.append(url)
-          lock.unlock()
-        }
-      }
+  private var accessibilityValue: String {
+    guard let count = item.visibleChildCount else {
+      return item.isNavigableDirectory ? "Folder" : "File"
     }
-
-    group.notify(queue: .main) {
-      completion(urls)
-    }
+    return "Folder, \(count) items"
   }
+
 }

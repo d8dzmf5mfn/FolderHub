@@ -8,6 +8,8 @@ struct DirectoryItem: Identifiable, Hashable, Sendable {
   let isSymbolicLink: Bool
   let isHidden: Bool
   let modifiedAt: Date?
+  let byteSize: Int64?
+  let visibleChildCount: Int?
 
   var id: URL { url }
 

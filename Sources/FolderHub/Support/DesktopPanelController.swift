@@ -26,7 +26,9 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     super.init()
 
     configurePanel()
-    let hostingView = NSHostingView(rootView: HubRootView(store: store))
+    let hostingView = FirstMouseHostingView(
+      rootView: HubRootView(store: store)
+    )
     hostingView.frame = panel.contentView?.bounds ?? .zero
     hostingView.autoresizingMask = [.width, .height]
     panel.contentView = hostingView
@@ -143,13 +145,26 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
   ) {
     let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first
     guard let screen else { return }
+    let currentFrame = panel.frame
     let currentHubPoint = hubScreenPoint(for: metrics, in: panel.frame)
+    let isResize = metrics.canvasSize != newMetrics.canvasSize
     metrics = newMetrics
-    positionPanel(
-      hubScreenPoint: currentHubPoint,
-      on: screen,
-      animated: false
-    )
+    if isResize {
+      setPanelFrame(
+        BubblePanelResizePolicy.topLeftAnchoredFrame(
+          from: currentFrame,
+          to: newMetrics.canvasSize
+        ),
+        on: screen,
+        animated: false
+      )
+    } else {
+      positionPanel(
+        hubScreenPoint: currentHubPoint,
+        on: screen,
+        animated: false
+      )
+    }
   }
 
   private func positionPanel(
@@ -158,15 +173,28 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     animated: Bool
   ) {
     let size = metrics.canvasSize
-    var origin = CGPoint(
+    let origin = CGPoint(
       x: hubScreenPoint.x - metrics.hubCenter.x,
       y: hubScreenPoint.y - size.height + metrics.hubCenter.y
     )
-    let available = screen.visibleFrame.insetBy(dx: 10, dy: 10)
-    origin.x = min(max(origin.x, available.minX), available.maxX - size.width)
-    origin.y = min(max(origin.y, available.minY), available.maxY - size.height)
-    let frame = CGRect(origin: origin, size: size)
+    setPanelFrame(
+      CGRect(origin: origin, size: size),
+      on: screen,
+      animated: animated
+    )
+  }
 
+  private func setPanelFrame(
+    _ proposedFrame: CGRect,
+    on screen: NSScreen,
+    animated: Bool
+  ) {
+    let available = screen.visibleFrame.insetBy(dx: 10, dy: 10)
+    var frame = proposedFrame
+    let maximumX = max(available.minX, available.maxX - frame.width)
+    let maximumY = max(available.minY, available.maxY - frame.height)
+    frame.origin.x = min(max(frame.minX, available.minX), maximumX)
+    frame.origin.y = min(max(frame.minY, available.minY), maximumY)
     isUpdatingFrame = true
     panel.setFrame(frame, display: true, animate: animated)
     isUpdatingFrame = false
@@ -210,14 +238,14 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
   }
 
   private func detachBranch(offset: CGSize) {
-    guard let branchCenter = metrics.branchCenter else { return }
-    let draggedCenter = CGPoint(
-      x: branchCenter.x + offset.width,
-      y: branchCenter.y + offset.height
+    let currentHubPoint = hubScreenPoint(for: metrics, in: panel.frame)
+    let branchCenter = HubPresentationMetrics.independentBranchCenter(
+      hubCenter: currentHubPoint,
+      hubSize: metrics.hubSize
     )
     let screenPoint = CGPoint(
-      x: panel.frame.minX + draggedCenter.x,
-      y: panel.frame.maxY - draggedCenter.y
+      x: branchCenter.x + offset.width,
+      y: branchCenter.y - offset.height
     )
 
     closeDetachedBranch()
@@ -243,8 +271,8 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
       }
       parentFrame = parentController.frame
     } else {
-      guard let rootBranchFrame else { return }
-      parentFrame = rootBranchFrame
+      guard let detachedBranchController else { return }
+      parentFrame = detachedBranchController.frame
     }
 
     let registration = childDirectoryHierarchy.register(
@@ -272,21 +300,6 @@ final class DesktopPanelController: NSObject, NSWindowDelegate {
     controller.show(
       adjacentTo: parentFrame,
       avoiding: occupiedFrames
-    )
-  }
-
-  private var rootBranchFrame: CGRect? {
-    guard let branchCenter = metrics.branchCenter else { return nil }
-    let size = HubPresentationMetrics.branchSize
-    let screenCenter = CGPoint(
-      x: panel.frame.minX + branchCenter.x,
-      y: panel.frame.maxY - branchCenter.y
-    )
-    return CGRect(
-      x: screenCenter.x - size.width / 2,
-      y: screenCenter.y - size.height / 2,
-      width: size.width,
-      height: size.height
     )
   }
 

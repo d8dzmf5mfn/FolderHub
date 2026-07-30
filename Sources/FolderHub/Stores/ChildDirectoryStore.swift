@@ -10,6 +10,7 @@ final class ChildDirectoryStore {
   private(set) var isLoading = true
   private(set) var errorMessage: String?
   private(set) var isPinned = false
+  private(set) var sortOrder = DirectorySortOrder.default
 
   @ObservationIgnored private let directoryService = DirectoryService()
   @ObservationIgnored private let workspace = WorkspaceService()
@@ -81,11 +82,18 @@ final class ChildDirectoryStore {
     onPinChange?(isPinned)
   }
 
+  func setSortOrder(_ order: DirectorySortOrder) {
+    guard sortOrder != order else { return }
+    sortOrder = order
+    items = DirectorySortPolicy.sorted(items, using: order)
+  }
+
   func refresh() {
     refreshTask?.cancel()
     isLoading = true
     errorMessage = nil
     let directoryURL = directoryURL
+    let sortOrder = sortOrder
     let service = directoryService
 
     refreshTask = Task { [weak self] in
@@ -93,7 +101,8 @@ final class ChildDirectoryStore {
         Result {
           try service.contents(
             of: directoryURL,
-            showHiddenFiles: false
+            showHiddenFiles: false,
+            sortOrder: sortOrder
           )
         }
       }.value
@@ -101,9 +110,13 @@ final class ChildDirectoryStore {
       self.isLoading = false
       switch result {
       case .success(let items):
-        self.items = items
+        let displayedItems =
+          sortOrder == self.sortOrder
+          ? items
+          : DirectorySortPolicy.sorted(items, using: self.sortOrder)
+        self.items = displayedItems
         if let selectedItemID = self.selectedItemID,
-          !items.contains(where: { $0.id == selectedItemID })
+          !displayedItems.contains(where: { $0.id == selectedItemID })
         {
           self.selectedItemID = nil
         }

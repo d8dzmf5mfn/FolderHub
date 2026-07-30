@@ -5,163 +5,120 @@ import Testing
 
 @Suite("Hub presentation geometry")
 struct HubPresentationTests {
-  @Test(
-    "Expanded branch stays in the selected direction",
-    arguments: [
-      CGVector(dx: 1, dy: 0),
-      CGVector(dx: -1, dy: 0),
-      CGVector(dx: 0, dy: 1),
-      CGVector(dx: 0.7, dy: -0.4),
-    ]
-  )
-  func branchDirection(_ direction: CGVector) {
-    let metrics = HubPresentationMetrics.expanded(
-      hubDiameter: 152,
-      direction: direction
-    )
-    let branch = metrics.branchCenter!
-    let offset = CGVector(
-      dx: branch.x - metrics.hubCenter.x,
-      dy: branch.y - metrics.hubCenter.y
-    )
-
-    #expect(offset.dx * direction.dx + offset.dy * direction.dy > 0)
-    #expect(metrics.canvasSize.width >= metrics.hubDiameter)
-    #expect(metrics.canvasSize.height >= metrics.hubDiameter)
-  }
-
-  @Test("Zero direction uses the right-side fallback")
-  func zeroDirectionFallback() {
-    let metrics = HubPresentationMetrics.expanded(
-      hubDiameter: 152,
-      direction: CGVector(dx: 0, dy: 0)
-    )
-    #expect(metrics.branchCenter!.x > metrics.hubCenter.x)
-    #expect(metrics.branchCenter!.y == metrics.hubCenter.y)
-  }
-
-  @Test("Expanded glass path is one connected pull from hub to branch")
-  func connectedGlassPath() {
-    let metrics = HubPresentationMetrics.expanded(
-      hubDiameter: 208,
-      direction: CGVector(dx: 0.8, dy: 0.45)
-    )
-    let shape = HubBlobShape(
-      metrics: metrics,
-      hubDiameter: metrics.hubDiameter,
-      progress: 1
-    )
-    let path = shape.path(
-      in: CGRect(origin: .zero, size: metrics.canvasSize)
-    )
-    let branchCenter = metrics.branchCenter!
-
-    #expect(path.contains(metrics.hubCenter))
-    #expect(path.contains(branchCenter))
-
-    for step in 0...10 {
-      let amount = CGFloat(step) / 10
-      let point = CGPoint(
-        x: metrics.hubCenter.x
-          + (branchCenter.x - metrics.hubCenter.x) * amount,
-        y: metrics.hubCenter.y
-          + (branchCenter.y - metrics.hubCenter.y) * amount
-      )
-      #expect(path.contains(point))
-    }
-  }
-
-  @Test("Collapsed canvas follows the dynamic hub diameter")
+  @Test("Collapsed canvas follows the rounded rectangle root size")
   func collapsedCanvasSizing() {
-    for diameter in [104.0, 140.0, 176.0, 208.0] {
-      let metrics = HubPresentationMetrics.collapsed(
-        hubDiameter: diameter
-      )
-      #expect(
-        abs(
-          metrics.canvasSize.width
-            - diameter - HubPresentationMetrics.padding * 2
-        ) < 0.001
-      )
-      #expect(
-        abs(
-          metrics.canvasSize.height
-            - diameter - HubPresentationMetrics.padding * 2
-        ) < 0.001
-      )
-    }
-  }
+    let metrics = HubPresentationMetrics.collapsed()
+    let rootSize = HubPresentationMetrics.rootSize
 
-  @Test("Branch interaction extends beyond the visible glass")
-  func expandedBranchInteractionRegion() {
-    let metrics = HubPresentationMetrics.expanded(
-      hubDiameter: 140,
-      direction: CGVector(dx: 1, dy: 0)
-    )
-    let visualShape = HubBlobShape(
-      metrics: metrics,
-      hubDiameter: metrics.hubDiameter,
-      progress: 1
-    )
-    let interactionShape = HubBlobShape(
-      metrics: metrics,
-      hubDiameter: metrics.hubDiameter,
-      progress: 1,
-      interactionOutset:
-        HubPresentationMetrics.branchInteractionOutset
-    )
-    let branchCenter = metrics.branchCenter!
-    let expandedHitPoint = CGPoint(
-      x: branchCenter.x
-        + HubPresentationMetrics.branchSize.width / 2 + 8,
-      y: branchCenter.y
-    )
-
+    #expect(metrics.hubSize == rootSize)
     #expect(
-      !visualShape.path(
-        in: CGRect(origin: .zero, size: metrics.canvasSize)
-      ).contains(expandedHitPoint)
+      abs(
+        metrics.canvasSize.width
+          - rootSize.width - HubPresentationMetrics.padding * 2
+      ) < 0.001
     )
     #expect(
-      interactionShape.path(
-        in: CGRect(origin: .zero, size: metrics.canvasSize)
-      ).contains(expandedHitPoint)
+      abs(
+        metrics.canvasSize.height
+          - rootSize.height - HubPresentationMetrics.padding * 2
+      ) < 0.001
     )
   }
 
-  @Test("Dragged branch remains connected and inside its canvas")
-  func draggedBranchGeometry() {
-    let metrics = HubPresentationMetrics.expanded(
-      hubDiameter: 140,
-      direction: CGVector(dx: 0.8, dy: -0.35)
-    )
-    let offset = BranchDragPolicy.clamped(
-      CGSize(width: 90, height: -60)
-    )
-    let shape = HubBlobShape(
-      metrics: metrics,
-      hubDiameter: metrics.hubDiameter,
-      progress: 1,
-      branchOffset: offset
-    )
-    let path = shape.path(
-      in: CGRect(origin: .zero, size: metrics.canvasSize)
-    )
-    let draggedCenter = CGPoint(
-      x: metrics.branchCenter!.x + offset.width,
-      y: metrics.branchCenter!.y + offset.height
-    )
-    let bounds = path.boundingRect
+  @Test("First branch starts beside the Hub without sharing its canvas")
+  func independentBranchPlacement() {
+    let hubCenter = CGPoint(x: 400, y: 300)
+    let hubSize = CGSize(width: 240, height: 180)
+    let branchSize = CGSize(width: 190, height: 144)
 
-    #expect(path.contains(metrics.hubCenter))
-    #expect(path.contains(draggedCenter))
-    #expect(bounds.minX >= 0)
-    #expect(bounds.minY >= 0)
-    #expect(bounds.maxX <= metrics.canvasSize.width)
-    #expect(bounds.maxY <= metrics.canvasSize.height)
-    #expect(
-      hypot(offset.width, offset.height)
-        <= HubPresentationMetrics.branchDragLimit + 0.001
+    let branchCenter = HubPresentationMetrics.independentBranchCenter(
+      hubCenter: hubCenter,
+      hubSize: hubSize,
+      branchSize: branchSize
     )
+
+    #expect(branchCenter.y == hubCenter.y)
+    #expect(
+      branchCenter.x - branchSize.width / 2
+        == hubCenter.x + hubSize.width / 2
+        + HubPresentationMetrics.branchGap
+    )
+  }
+
+  @Test("Child bubble sizes change independently")
+  @MainActor
+  func independentBubbleSizes() {
+    let parent = BubbleResizeState()
+    let child = BubbleResizeState()
+
+    parent.resize(to: CGSize(width: 260, height: 196))
+
+    #expect(parent.size == CGSize(width: 260, height: 196))
+    #expect(child.size == HubPresentationMetrics.branchSize)
+  }
+
+  @Test("Bubble resizing cannot shrink below the shared default")
+  func minimumBubbleSize() {
+    #expect(
+      BubbleResizePolicy.clamped(CGSize(width: 120, height: 240))
+        == CGSize(width: 190, height: 240)
+    )
+    #expect(
+      BubbleResizePolicy.clamped(CGSize(width: 300, height: 90))
+        == CGSize(width: 300, height: 144)
+    )
+  }
+
+  @Test("Resize drag uses stable screen coordinates without amplification")
+  func stableScreenCoordinateResize() {
+    let proposed = BubbleResizeDragPolicy.proposedSize(
+      startSize: CGSize(width: 190, height: 144),
+      startPointer: CGPoint(x: 500, y: 500),
+      currentPointer: CGPoint(x: 560, y: 450)
+    )
+
+    #expect(proposed == CGSize(width: 250, height: 194))
+  }
+
+  @Test("Resize growth stays monotonic as the pointer moves down and right")
+  func monotonicResizeGrowth() {
+    let startSize = CGSize(width: 190, height: 144)
+    let startPointer = CGPoint(x: 500, y: 500)
+    let first = BubbleResizeDragPolicy.proposedSize(
+      startSize: startSize,
+      startPointer: startPointer,
+      currentPointer: CGPoint(x: 520, y: 480)
+    )
+    let second = BubbleResizeDragPolicy.proposedSize(
+      startSize: startSize,
+      startPointer: startPointer,
+      currentPointer: CGPoint(x: 540, y: 460)
+    )
+
+    #expect(second.width > first.width)
+    #expect(second.height > first.height)
+  }
+
+  @Test("Panel resizing keeps its top-left corner fixed")
+  func topLeftAnchoredPanelResize() {
+    let currentFrame = CGRect(x: 100, y: 200, width: 214, height: 168)
+    let resized = BubblePanelResizePolicy.topLeftAnchoredFrame(
+      from: currentFrame,
+      to: CGSize(width: 274, height: 218)
+    )
+
+    #expect(resized.minX == currentFrame.minX)
+    #expect(resized.maxY == currentFrame.maxY)
+    #expect(resized.size == CGSize(width: 274, height: 218))
+  }
+
+  @Test("Resize corner keeps a clear pointer target")
+  func resizeCornerTarget() {
+    #expect(BubbleResizeMetrics.hitSize >= 32)
+    #expect(BubbleResizeMetrics.visualSize == 24)
+    #expect(BubbleResizeMetrics.glyphSize == 13)
+    #expect(BubbleResizeMetrics.hitSize > BubbleResizeMetrics.visualSize)
+    #expect(BubbleResizeMetrics.visualSize > BubbleResizeMetrics.glyphSize)
+    #expect(HubPresentationMetrics.bubbleCornerRadius == 24)
   }
 }

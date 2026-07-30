@@ -4,60 +4,130 @@ import UniformTypeIdentifiers
 struct HubSurfaceView: View {
   @Bindable var store: HubStore
   @Binding var isDropTargeted: Bool
-  let diameter: CGFloat
+  let size: CGSize
 
   @State private var isHovered = false
+  @State private var isDragHandleHovered = false
+  @Bindable private var glassAppearance = GlassAppearanceStore.shared
+
+  private var glassOpticalOpacity: Double {
+    glassAppearance.opticalOpacity
+  }
 
   var body: some View {
     ZStack {
-      Circle()
+      bubbleShape
         .fill(.clear)
-        .contentShape(Circle())
-        .gesture(WindowDragGesture())
-        .allowsWindowActivationEvents(true)
+        .glassEffect(
+          .clear
+            .tint(isDropTargeted ? Color.accentColor.opacity(0.1) : nil)
+            .interactive(),
+          in: bubbleShape
+        )
+        .opacity(glassOpticalOpacity)
 
-      if store.folders.isEmpty {
-        Button {
-          store.chooseAndAddFolder()
-        } label: {
-          VStack(spacing: 3) {
-            Text("Folder Hub")
-              .font(.system(size: 14, weight: .semibold))
-            Text("Drop or click to add")
-              .font(.system(size: 10.5))
-              .foregroundStyle(.secondary)
-          }
-        }
-        .buttonStyle(HubElasticButtonStyle())
-      } else {
-        ForEach(store.folders) { folder in
-          if let label = store.layout.labels[folder.id] {
-            folderLabel(folder, layout: label)
-          }
-        }
+      VStack(spacing: 0) {
+        dragHeader
+        contents
       }
-
-      HubDragCollisionHandle()
-        .position(x: diameter / 2, y: diameter / 2)
-
-      hubMinimizeButton
-        .position(HubWindowControls.hubMinimizeCenter(diameter: diameter))
-        .zIndex(HubWindowControls.zIndex)
-
-      hubPinButton
-        .position(HubWindowControls.hubPinCenter(diameter: diameter))
-        .zIndex(HubWindowControls.zIndex)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
     }
-    .frame(width: diameter, height: diameter)
-    .contentShape(Circle())
+    .frame(width: size.width, height: size.height)
+    .contentShape(bubbleShape)
+    .overlay(alignment: .bottomTrailing) {
+      BubbleResizeHandle(
+        size: store.bubbleSize,
+        onResize: store.resizeBubbles
+      )
+    }
+    .scaleEffect(isHovered ? 1.008 : 1)
+    .brightness(isHovered ? 0.02 : 0)
+    .animation(
+      .interactiveSpring(duration: 0.24, extraBounce: 0.18),
+      value: isHovered
+    )
     .onHover { isHovered = $0 }
     .onDrop(
       of: [UTType.fileURL.identifier],
       isTargeted: $isDropTargeted,
       perform: acceptDrop
     )
+    .allowsWindowActivationEvents(true)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Folder Hub")
+  }
+
+  private var dragHeader: some View {
+    ZStack {
+      HStack {
+        Text("Folder Hub")
+          .font(.system(size: 10.5, weight: .semibold))
+          .foregroundStyle(Color.primary.opacity(0.5))
+          .lineLimit(1)
+
+        Spacer(minLength: 0)
+
+        hubPinButton
+        hubMinimizeButton
+      }
+
+      BranchDragAffordance(
+        isHovered: isDragHandleHovered,
+        isPressed: false
+      )
+      .overlay {
+        WindowDragHitBox()
+      }
+      .onHover { isDragHandleHovered = $0 }
+      .accessibilityElement()
+      .accessibilityLabel("Move Folder Hub")
+      .accessibilityHint("Drag to move Folder Hub")
+    }
+    .frame(height: DragCollisionMetrics.branchHitSize.height)
+  }
+
+  @ViewBuilder
+  private var contents: some View {
+    if store.folders.isEmpty {
+      Button {
+        store.chooseAndAddFolder()
+      } label: {
+        VStack(spacing: 3) {
+          Text("Drop or click to add")
+            .font(.system(size: 11, weight: .medium))
+          Text("Up to \(HubStore.maximumFolderCount) folders")
+            .font(.system(size: 9.5))
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+    } else {
+      ScrollView(.vertical) {
+        LazyVStack(alignment: .leading, spacing: 0) {
+          ForEach(store.folders) { folder in
+            folderRow(folder)
+          }
+        }
+        .padding(.vertical, DragCollisionMetrics.listContentSpacing)
+      }
+      .scrollIndicators(.hidden)
+      .scrollBounceBehavior(.basedOnSize)
+      .mask(
+        LinearGradient(
+          stops: [
+            .init(color: .clear, location: 0),
+            .init(color: .black, location: 0.08),
+            .init(color: .black, location: 0.92),
+            .init(color: .clear, location: 1),
+          ],
+          startPoint: .top,
+          endPoint: .bottom
+        )
+      )
+    }
   }
 
   private var hubPinButton: some View {
@@ -69,32 +139,29 @@ struct HubSurfaceView: View {
         .foregroundStyle(
           store.isHubPinned
             ? Color.accentColor.opacity(0.72)
-            : Color.primary.opacity(0.4)
+            : Color.primary.opacity(0.42)
         )
         .frame(
-          width: HubWindowControls.hubHitDiameter,
-          height: HubWindowControls.hubHitDiameter
+          width: HubWindowControls.childHitDiameter,
+          height: HubWindowControls.childHitDiameter
         )
         .contentShape(Circle())
     }
-    .buttonStyle(HubElasticButtonStyle())
+    .buttonStyle(.plain)
     .background(
       Circle()
         .fill(
           store.isHubPinned
             ? Color.accentColor.opacity(0.08)
-            : Color.primary.opacity(isHovered ? 0.055 : 0.025)
+            : Color.primary.opacity(isHovered ? 0.07 : 0.035)
         )
     )
     .frame(
-      width: HubWindowControls.hubHitDiameter,
-      height: HubWindowControls.hubHitDiameter
+      width: HubWindowControls.childHitDiameter,
+      height: HubWindowControls.childHitDiameter
     )
     .contentShape(Circle())
-    .opacity(
-      isHovered || store.isHubPinned
-        ? 1 : HubWindowControls.idleOpacity
-    )
+    .zIndex(HubWindowControls.zIndex)
     .allowsHitTesting(true)
     .allowsWindowActivationEvents(true)
     .help(store.isHubPinned ? "Unpin Folder Hub" : "Keep Folder Hub on top")
@@ -112,22 +179,22 @@ struct HubSurfaceView: View {
         .font(.system(size: 9, weight: .bold))
         .foregroundStyle(Color.primary.opacity(0.42))
         .frame(
-          width: HubWindowControls.hubHitDiameter,
-          height: HubWindowControls.hubHitDiameter
+          width: HubWindowControls.childHitDiameter,
+          height: HubWindowControls.childHitDiameter
         )
         .contentShape(Circle())
     }
-    .buttonStyle(HubElasticButtonStyle())
+    .buttonStyle(.plain)
     .background(
       Circle()
-        .fill(Color.primary.opacity(isHovered ? 0.055 : 0.025))
+        .fill(Color.primary.opacity(isHovered ? 0.07 : 0.035))
     )
     .frame(
-      width: HubWindowControls.hubHitDiameter,
-      height: HubWindowControls.hubHitDiameter
+      width: HubWindowControls.childHitDiameter,
+      height: HubWindowControls.childHitDiameter
     )
     .contentShape(Circle())
-    .opacity(isHovered ? 1 : HubWindowControls.idleOpacity)
+    .zIndex(HubWindowControls.zIndex)
     .allowsHitTesting(true)
     .allowsWindowActivationEvents(true)
     .help("Minimize Folder Hub")
@@ -135,43 +202,52 @@ struct HubSurfaceView: View {
     .accessibilityHint("Child folder bubbles stay open")
   }
 
-  private func folderLabel(
-    _ folder: ManagedFolderRecord,
-    layout: HubLabelLayout
-  ) -> some View {
+  private func folderRow(_ folder: ManagedFolderRecord) -> some View {
     let isSelected =
       store.selectedFolderID == folder.id
       && !store.isBranchDetached
-    let offset = displayedOffset(for: layout, selected: isSelected)
 
     return Button {
       store.selectFolder(folder.id)
     } label: {
-      Text(folder.displayName)
-        .font(
-          .system(
-            size: isSelected ? 12.5 : 11,
-            weight: isSelected ? .semibold : .medium
+      HStack(spacing: 6) {
+        Text(folder.displayName)
+          .font(
+            .system(
+              size: 12,
+              weight: isSelected ? .semibold : .regular
+            )
           )
-        )
-        .foregroundStyle(
-          isSelected
-            ? Color.accentColor.opacity(0.72)
-            : Color.primary.opacity(0.5)
-        )
-        .lineLimit(1)
-        .minimumScaleFactor(0.72)
-        .frame(width: layout.estimatedSize.width)
-        .contentShape(Rectangle())
+          .foregroundStyle(
+            isSelected
+              ? Color.accentColor.opacity(0.78)
+              : Color.primary.opacity(0.64)
+          )
+          .lineLimit(1)
+          .truncationMode(.middle)
+
+        Spacer(minLength: 0)
+
+        if let count = store.childCount(for: folder.id) {
+          DirectoryItemCountBadge(count: count)
+        }
+      }
+      .frame(
+        maxWidth: .infinity,
+        minHeight: DragCollisionMetrics.folderRowHitHeight,
+        alignment: .leading
+      )
+      .padding(.horizontal, 3)
+      .contentShape(Rectangle())
     }
-    .buttonStyle(HubElasticButtonStyle())
-    .position(
-      x: diameter / 2 + offset.x,
-      y: diameter / 2 + offset.y
-    )
-    .animation(
-      .spring(duration: 0.46, bounce: 0.36, blendDuration: 0.08),
-      value: store.selectedFolderID
+    .buttonStyle(.plain)
+    .background(
+      Capsule()
+        .fill(
+          isSelected
+            ? Color.accentColor.opacity(0.08)
+            : Color.clear
+        )
     )
     .contextMenu {
       Button("Show in Finder") {
@@ -189,70 +265,32 @@ struct HubSurfaceView: View {
       }
     }
     .accessibilityLabel(folder.displayName)
+    .accessibilityValue(accessibilityValue(for: folder))
     .accessibilityHint("Opens the folder inside Folder Hub")
   }
 
-  private func displayedOffset(
-    for layout: HubLabelLayout,
-    selected: Bool
-  ) -> CGPoint {
-    guard selected else { return layout.centerOffset }
-    let direction = store.branchDirection.normalized(
-      or: CGVector(dx: 1, dy: 0)
-    )
-    let horizontalExtent = abs(direction.dx) * layout.estimatedSize.width / 2
-    let verticalExtent = abs(direction.dy) * layout.estimatedSize.height / 2
-    let radius = diameter / 2 - max(horizontalExtent, verticalExtent) - 9
-    let proposed = CGPoint(
-      x: direction.dx * radius,
-      y: direction.dy * radius
-    )
-    return HubWindowControls.separatingLabelFromControls(
-      proposed,
-      size: layout.estimatedSize,
-      diameter: diameter
+  private func accessibilityValue(
+    for folder: ManagedFolderRecord
+  ) -> String {
+    guard let count = store.childCount(for: folder.id) else {
+      return "Folder"
+    }
+    return "Folder, \(count) items"
+  }
+
+  private var bubbleShape: RoundedRectangle {
+    RoundedRectangle(
+      cornerRadius: HubPresentationMetrics.bubbleCornerRadius,
+      style: .continuous
     )
   }
 
   private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
-    var accepted = false
-    for provider in providers
-    where provider.hasItemConformingToTypeIdentifier(
-      UTType.fileURL.identifier
-    ) {
-      accepted = true
-      provider.loadItem(
-        forTypeIdentifier: UTType.fileURL.identifier,
-        options: nil
-      ) { item, _ in
-        let url: URL?
-        if let data = item as? Data {
-          url = URL(dataRepresentation: data, relativeTo: nil)
-        } else if let itemURL = item as? URL {
-          url = itemURL
-        } else if let itemURL = item as? NSURL {
-          url = itemURL as URL
-        } else {
-          url = nil
-        }
-        guard let url else { return }
-        Task { @MainActor in
-          store.addDroppedItems([url])
-        }
-      }
-    }
-    return accepted
-  }
-}
-
-private struct HubElasticButtonStyle: ButtonStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .scaleEffect(configuration.isPressed ? 0.88 : 1)
-      .brightness(configuration.isPressed ? 0.08 : 0)
-      .animation(
-        .interactiveSpring(duration: 0.24, extraBounce: 0.28),
-        value: configuration.isPressed
+    FileDropProviderLoader.loadURLs(from: providers) { result in
+      store.addDroppedItems(
+        result.urls,
+        unreadableItemCount: result.unreadableItemCount
       )
+    }
   }
 }

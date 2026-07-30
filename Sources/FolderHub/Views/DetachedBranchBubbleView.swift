@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DetachedBranchBubbleView: View {
   @Bindable var store: HubStore
+  @Bindable var resizeState: BubbleResizeState
   let onReturnToHub: () -> Void
   let onDragChanged: (CGSize) -> Void
   let onDragEnded: (CGSize) -> Void
@@ -23,6 +24,7 @@ struct DetachedBranchBubbleView: View {
           in: bubbleShape
         )
         .opacity(glassOpticalOpacity)
+        .frame(width: currentVisualSize.width, height: currentVisualSize.height)
 
       DraggableBranchHost(
         store: store,
@@ -33,22 +35,45 @@ struct DetachedBranchBubbleView: View {
         tracksMovingWindow: true
       )
       .frame(
-        width: HubPresentationMetrics.branchSize.width,
-        height: HubPresentationMetrics.branchSize.height
+        width: currentVisualSize.width,
+        height: currentVisualSize.height
       )
 
       VStack {
-        BranchDragAffordance(
-          isHovered: isHovered,
-          isPressed: isPressed
-        )
+        ZStack {
+          BranchDragAffordance(
+            isHovered: isHovered,
+            isPressed: isPressed
+          )
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+
+          HStack {
+            Spacer(minLength: 0)
+            DirectorySortMenu(
+              order: store.directorySortOrder,
+              onChange: store.setDirectorySortOrder
+            )
+            .zIndex(20)
+          }
+          .padding(.horizontal, 12)
+        }
         .padding(.top, HubPresentationMetrics.branchInteractionOutset)
-        .accessibilityHidden(true)
+
         Spacer()
       }
-      .allowsHitTesting(false)
+
+      BubbleResizeHandle(
+        size: resizeState.size,
+        onResize: resizeState.resize
+      )
+      .frame(
+        maxWidth: currentVisualSize.width,
+        maxHeight: currentVisualSize.height,
+        alignment: .bottomTrailing
+      )
     }
-    .frame(width: bubbleSize.width, height: bubbleSize.height)
+    .frame(width: currentWindowSize.width, height: currentWindowSize.height)
     .contentShape(bubbleShape)
     .scaleEffect(isPressed ? 0.985 : isHovered ? 1.012 : 1)
     .brightness(isHovered ? 0.025 : 0)
@@ -69,16 +94,19 @@ struct DetachedBranchBubbleView: View {
     .accessibilityLabel("Detached folder bubble")
   }
 
-  private var bubbleSize: CGSize {
-    let outset = HubPresentationMetrics.branchInteractionOutset
-    return CGSize(
-      width: HubPresentationMetrics.branchSize.width + outset * 2,
-      height: HubPresentationMetrics.branchSize.height + outset * 2
-    )
+  private var currentVisualSize: CGSize {
+    resizeState.size
+  }
+
+  private var currentWindowSize: CGSize {
+    HubPresentationMetrics.branchWindowSize(for: currentVisualSize)
   }
 
   private var bubbleShape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: 48, style: .continuous)
+    RoundedRectangle(
+      cornerRadius: HubPresentationMetrics.bubbleCornerRadius,
+      style: .continuous
+    )
   }
 
 }

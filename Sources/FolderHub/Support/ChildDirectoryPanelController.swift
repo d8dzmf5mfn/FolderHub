@@ -79,6 +79,7 @@ enum ChildDirectoryPanelPlacement {
 final class ChildDirectoryPanelController {
   private let panel: HubPanel
   private let store: ChildDirectoryStore
+  private let resizeState: BubbleResizeState
 
   var frame: CGRect {
     panel.frame
@@ -90,7 +91,10 @@ final class ChildDirectoryPanelController {
     onClose: @escaping () -> Void
   ) {
     store = ChildDirectoryStore(directoryURL: directoryURL)
-    let size = ChildDirectoryBubbleView.size
+    resizeState = BubbleResizeState()
+    let size = HubPresentationMetrics.branchWindowSize(
+      for: resizeState.size
+    )
     panel = HubPanel(
       contentRect: CGRect(origin: .zero, size: size),
       styleMask: [.borderless],
@@ -114,8 +118,11 @@ final class ChildDirectoryPanelController {
     ]
     panel.level = FolderHubWindowPinning.level(isPinned: false)
 
-    let hostingView = NSHostingView(
-      rootView: ChildDirectoryBubbleView(store: store)
+    let hostingView = FirstMouseHostingView(
+      rootView: ChildDirectoryBubbleView(
+        store: store,
+        resizeState: resizeState
+      )
     )
     hostingView.frame = CGRect(origin: .zero, size: size)
     hostingView.autoresizingMask = [.width, .height]
@@ -125,6 +132,9 @@ final class ChildDirectoryPanelController {
     store.onClose = onClose
     store.onPinChange = { [weak self] isPinned in
       self?.panel.level = FolderHubWindowPinning.level(isPinned: isPinned)
+    }
+    resizeState.onResize = { [weak self] visualSize in
+      self?.resizePanel(to: visualSize)
     }
     panel.onQuickLook = { [weak store] in
       store?.previewSelectedItem()
@@ -160,5 +170,19 @@ final class ChildDirectoryPanelController {
 
   func close() {
     panel.orderOut(nil)
+  }
+
+  private func resizePanel(to visualSize: CGSize) {
+    let newSize = HubPresentationMetrics.branchWindowSize(
+      for: visualSize
+    )
+    guard panel.frame.size != newSize else { return }
+    panel.setFrame(
+      BubblePanelResizePolicy.topLeftAnchoredFrame(
+        from: panel.frame,
+        to: newSize
+      ),
+      display: true
+    )
   }
 }

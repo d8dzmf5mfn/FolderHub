@@ -70,7 +70,7 @@ final class DraggableBranchContainerView:
     )
     recognizer.buttonMask = 0x1
     recognizer.delegate = self
-    recognizer.delaysPrimaryMouseButtonEvents = true
+    recognizer.delaysPrimaryMouseButtonEvents = false
     addGestureRecognizer(recognizer)
   }
 
@@ -80,6 +80,10 @@ final class DraggableBranchContainerView:
   }
 
   override var mouseDownCanMoveWindow: Bool {
+    false
+  }
+
+  override var isFlipped: Bool {
     false
   }
 
@@ -126,8 +130,8 @@ final class DraggableBranchContainerView:
       removeTrackingArea(hoverTrackingArea)
     }
     let trackingArea = NSTrackingArea(
-      rect: bounds,
-      options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+      rect: DragCollisionMetrics.branchHitRect(in: bounds),
+      options: [.mouseEnteredAndExited, .activeAlways],
       owner: self
     )
     addTrackingArea(trackingArea)
@@ -136,7 +140,10 @@ final class DraggableBranchContainerView:
 
   override func resetCursorRects() {
     super.resetCursorRects()
-    addCursorRect(bounds, cursor: .openHand)
+    addCursorRect(
+      DragCollisionMetrics.branchHitRect(in: bounds),
+      cursor: .openHand
+    )
   }
 
   override func mouseEntered(with event: NSEvent) {
@@ -148,6 +155,7 @@ final class DraggableBranchContainerView:
   override func mouseExited(with event: NSEvent) {
     isPointerInside = false
     onHoverChanged(false)
+    NSCursor.arrow.set()
   }
 
   func gestureRecognizer(
@@ -186,9 +194,7 @@ final class DraggableBranchContainerView:
           height: dragStartScreenPoint.y - currentPoint.y
         )
       } else {
-        let appKitTranslation = recognizer.translation(
-          in: window?.contentView
-        )
+        let appKitTranslation = recognizer.translation(in: self)
         translation = CGSize(
           width: appKitTranslation.x,
           height: -appKitTranslation.y

@@ -1,8 +1,8 @@
 # Folder Hub
 
 Folder Hub is a native macOS 26 desktop utility that moves user-selected folders
-into `~/FolderHubLibrary` and presents them through one compact Liquid Glass
-navigator. It never replaces Finder.
+into `~/FolderHubLibrary` and presents them through compact Liquid Glass folder
+trees. It never replaces Finder.
 
 ## Requirements
 
@@ -29,12 +29,12 @@ The Codex desktop Run action uses the same script. Optional modes:
 - Drag a folder from Finder onto the glass Hub to move it into
   `~/FolderHubLibrary`; a Desktop folder therefore disappears from the Desktop.
 - Drag regular files onto the Hub to move them into
-  `~/FolderHubLibrary/Inbox`. Inbox is added to the orb automatically.
-- Click a folder name to pull out its compact, scrollable contents through one
-  continuous spring-animated glass surface.
-- Drag the outer glass edge of an expanded branch beyond the detach threshold
-  to turn it into a standalone desktop bubble. Use Escape, Collapse, or
-  **Return to Hub** from its context menu to close it.
+  `~/FolderHubLibrary/Inbox`. Inbox is added to the Hub automatically.
+- Click a folder name to open its compact, scrollable contents in a separate
+  spring-animated glass tree beside the Hub.
+- Every first-level folder opens immediately as an independent panel. Drag its
+  top handle to move it freely. Use Escape or **Return to Hub** from its context
+  menu to close it.
 - Use the Pin control on the Hub or any child-folder bubble to keep that window
   above other apps. Child bubbles can be pinned independently.
 - Child-folder bubbles stay open when the main branch retracts or changes.
@@ -46,6 +46,8 @@ The Codex desktop Run action uses the same script. Optional modes:
 - Double-click a file to open it; press Space for Quick Look.
 - Drag any file row from a branch or child bubble into another app to attach or
   upload that file using the standard macOS file drag payload.
+- Use the sort control in a first-level or child-folder tree to order folders
+  and files by name, modification date, or size in either direction.
 - Right-click items for rename, move, new folder, trash, and reveal actions.
 - Press Escape to collapse the branch.
 
@@ -71,8 +73,8 @@ the archive against `SHA256SUMS`.
 ## Package a release
 
 ```bash
-./script/package_release.sh 0.1.2
+./script/package_release.sh 0.1.7
 ```
 
 The script builds a universal app, applies an ad-hoc signature, validates the
-bundle, and writes the ZIP plus checksum file under `dist/release/`.
+bundle, and writes the DMG, ZIP, and checksum file under `dist/release/`.

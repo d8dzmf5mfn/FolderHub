@@ -32,134 +32,91 @@ enum HubSizingPolicy {
 
 struct HubPresentationMetrics: Equatable, Sendable {
   static let branchSize = CGSize(width: 190, height: 144)
+  static let rootSize = branchSize
+  static let bubbleCornerRadius: CGFloat = 24
   static let branchInteractionOutset: CGFloat = 12
-  static let branchDragLimit: CGFloat = 72
-  static let branchDetachThreshold: CGFloat = 58
+  static let branchGap: CGFloat = 18
   static let padding: CGFloat = 18
+  static var branchWindowSize: CGSize {
+    branchWindowSize(for: branchSize)
+  }
 
-  let hubDiameter: CGFloat
-  let canvasSize: CGSize
-  let hubCenter: CGPoint
-  let branchCenter: CGPoint?
-  let connectorCenter: CGPoint?
-  let connectorAngle: AngleValue
-
-  static func collapsed(hubDiameter: CGFloat) -> HubPresentationMetrics {
-    HubPresentationMetrics(
-      hubDiameter: hubDiameter,
-      canvasSize: CGSize(
-        width: hubDiameter + padding * 2,
-        height: hubDiameter + padding * 2
-      ),
-      hubCenter: CGPoint(
-        x: hubDiameter / 2 + padding,
-        y: hubDiameter / 2 + padding
-      ),
-      branchCenter: nil,
-      connectorCenter: nil,
-      connectorAngle: .zero
+  static func branchWindowSize(for visualSize: CGSize) -> CGSize {
+    CGSize(
+      width: visualSize.width + branchInteractionOutset * 2,
+      height: visualSize.height + branchInteractionOutset * 2
     )
   }
 
-  static func expanded(
-    hubDiameter: CGFloat,
-    direction rawDirection: CGVector
+  let hubSize: CGSize
+  let canvasSize: CGSize
+  let hubCenter: CGPoint
+
+  static func collapsed(
+    hubSize: CGSize = rootSize
   ) -> HubPresentationMetrics {
-    let direction = rawDirection.normalized(or: CGVector(dx: 1, dy: 0))
-    let hubRadius = hubDiameter / 2
-    let branchHalfExtent =
-      abs(direction.dx) * branchSize.width / 2
-      + abs(direction.dy) * branchSize.height / 2
-    let branchDistance = hubRadius + branchHalfExtent + 18
-    let branchCenterFromHub = CGPoint(
-      x: direction.dx * branchDistance,
-      y: direction.dy * branchDistance
-    )
-    let connectorDistance = branchDistance / 2
-    let connectorCenterFromHub = CGPoint(
-      x: direction.dx * connectorDistance,
-      y: direction.dy * connectorDistance
-    )
-
-    let hubRect = CGRect(
-      x: -hubRadius,
-      y: -hubRadius,
-      width: hubDiameter,
-      height: hubDiameter
-    )
-    let branchRect = CGRect(
-      x: branchCenterFromHub.x - branchSize.width / 2,
-      y: branchCenterFromHub.y - branchSize.height / 2,
-      width: branchSize.width,
-      height: branchSize.height
-    )
-    let expandedPadding =
-      padding + branchInteractionOutset + branchDragLimit
-    let bounds = hubRect.union(branchRect).insetBy(
-      dx: -expandedPadding,
-      dy: -expandedPadding
-    )
-
-    let translation = CGPoint(x: -bounds.minX, y: -bounds.minY)
-    return HubPresentationMetrics(
-      hubDiameter: hubDiameter,
-      canvasSize: bounds.size,
-      hubCenter: translation,
-      branchCenter: CGPoint(
-        x: branchCenterFromHub.x + translation.x,
-        y: branchCenterFromHub.y + translation.y
+    HubPresentationMetrics(
+      hubSize: hubSize,
+      canvasSize: CGSize(
+        width: hubSize.width + padding * 2,
+        height: hubSize.height + padding * 2
       ),
-      connectorCenter: CGPoint(
-        x: connectorCenterFromHub.x + translation.x,
-        y: connectorCenterFromHub.y + translation.y
-      ),
-      connectorAngle: AngleValue(
-        radians: atan2(direction.dy, direction.dx)
+      hubCenter: CGPoint(
+        x: hubSize.width / 2 + padding,
+        y: hubSize.height / 2 + padding
+      )
+    )
+  }
+
+  static func independentBranchCenter(
+    hubCenter: CGPoint,
+    hubSize: CGSize,
+    branchSize: CGSize = branchSize
+  ) -> CGPoint {
+    CGPoint(
+      x: hubCenter.x
+        + hubSize.width / 2
+        + branchGap
+        + branchSize.width / 2,
+      y: hubCenter.y
+    )
+  }
+}
+
+enum BubbleResizePolicy {
+  static func clamped(_ proposed: CGSize) -> CGSize {
+    CGSize(
+      width: max(HubPresentationMetrics.rootSize.width, proposed.width),
+      height: max(HubPresentationMetrics.rootSize.height, proposed.height)
+    )
+  }
+}
+
+enum BubbleResizeDragPolicy {
+  static func proposedSize(
+    startSize: CGSize,
+    startPointer: CGPoint,
+    currentPointer: CGPoint
+  ) -> CGSize {
+    BubbleResizePolicy.clamped(
+      CGSize(
+        width: startSize.width + currentPointer.x - startPointer.x,
+        height: startSize.height + startPointer.y - currentPointer.y
       )
     )
   }
 }
 
-enum BranchDragPolicy {
-  static func shouldDetach(_ offset: CGSize) -> Bool {
-    hypot(offset.width, offset.height)
-      >= HubPresentationMetrics.branchDetachThreshold
-  }
-
-  static func resisted(_ translation: CGSize) -> CGSize {
-    CGSize(
-      width: translation.width * 0.86,
-      height: translation.height * 0.86
+enum BubblePanelResizePolicy {
+  static func topLeftAnchoredFrame(
+    from currentFrame: CGRect,
+    to newSize: CGSize
+  ) -> CGRect {
+    CGRect(
+      x: currentFrame.minX,
+      y: currentFrame.maxY - newSize.height,
+      width: newSize.width,
+      height: newSize.height
     )
-  }
-
-  static func clamped(_ offset: CGSize) -> CGSize {
-    let magnitude = hypot(offset.width, offset.height)
-    let limit = HubPresentationMetrics.branchDragLimit
-    guard magnitude > limit, magnitude > 0 else {
-      return offset
-    }
-    let scale = limit / magnitude
-    return CGSize(
-      width: offset.width * scale,
-      height: offset.height * scale
-    )
-  }
-}
-
-struct AngleValue: Equatable, Sendable {
-  let radians: Double
-  static let zero = AngleValue(radians: 0)
-}
-
-extension CGVector {
-  var magnitude: CGFloat {
-    sqrt(dx * dx + dy * dy)
-  }
-
-  func normalized(or fallback: CGVector) -> CGVector {
-    let length = magnitude
-    guard length > 0.0001 else { return fallback }
-    return CGVector(dx: dx / length, dy: dy / length)
   }
 }

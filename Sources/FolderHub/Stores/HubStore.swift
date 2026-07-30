@@ -14,11 +14,13 @@ final class HubStore {
   private(set) var phase: HubInteractionPhase = .idle
   private(set) var selectedFolderID: UUID?
   private(set) var isBranchDetached = false
-  private(set) var branchDirection = CGVector(dx: 1, dy: -0.25)
   private(set) var directoryItems: [DirectoryItem] = []
+  private(set) var folderChildCounts: [UUID: Int] = [:]
+  private(set) var bubbleSize = HubPresentationMetrics.rootSize
   private(set) var selectedItemID: URL?
   private(set) var navigationPath: [URL] = []
   private(set) var isLoadingDirectory = false
+  private(set) var directorySortOrder = DirectorySortOrder.default
   private(set) var panelLocation: SavedPanelLocation?
   private(set) var notice: String?
   private(set) var trashedItem: TrashedItem?
@@ -30,6 +32,7 @@ final class HubStore {
     didSet {
       UserDefaults.standard.set(showHiddenFiles, forKey: Self.showHiddenKey)
       refreshDirectory()
+      refreshManagedFolderCounts()
     }
   }
 
@@ -51,6 +54,10 @@ final class HubStore {
   @ObservationIgnored private var watcherDebounceTask: Task<Void, Never>?
   @ObservationIgnored private var libraryWatcherDebounceTask: Task<Void, Never>?
   @ObservationIgnored private var librarySyncTask: Task<Void, Never>?
+  @ObservationIgnored private var folderCountsTask: Task<Void, Never>?
+  @ObservationIgnored private var dropImportTask: Task<Void, Never>?
+  @ObservationIgnored private var libraryMembershipRefreshPending = false
+  @ObservationIgnored private var bubbleSizePersistenceTask: Task<Void, Never>?
   @ObservationIgnored private var noticeTask: Task<Void, Never>?
   @ObservationIgnored private var undoExpiryTask: Task<Void, Never>?
 
@@ -65,6 +72,8 @@ final class HubStore {
 
   private static let showHiddenKey = "FolderHub.showHiddenFiles"
   private static let hubPinnedKey = "FolderHub.isHubPinned"
+  private static let bubbleWidthKey = "FolderHub.bubbleWidth"
+  private static let bubbleHeightKey = "FolderHub.bubbleHeight"
 
   private init() {
     let persisted = persistence.load()
@@ -75,6 +84,13 @@ final class HubStore {
     panelLocation = persisted.panelLocation
     showHiddenFiles = UserDefaults.standard.bool(forKey: Self.showHiddenKey)
     isHubPinned = UserDefaults.standard.bool(forKey: Self.hubPinnedKey)
+    let storedBubbleSize = CGSize(
+      width: UserDefaults.standard.double(forKey: Self.bubbleWidthKey),
+      height: UserDefaults.standard.double(forKey: Self.bubbleHeightKey)
+    )
+    if storedBubbleSize.width > 0, storedBubbleSize.height > 0 {
+      bubbleSize = BubbleResizePolicy.clamped(storedBubbleSize)
+    }
     let initialLayoutEngine = HubLayoutEngine()
     let initialHubDiameter = initialLayoutEngine.recommendedHubDiameter(
       folders: loadedFolders
@@ -91,8 +107,37 @@ final class HubStore {
     return folders.first { $0.id == selectedFolderID }
   }
 
+  func childCount(for folderID: UUID) -> Int? {
+    folderChildCounts[folderID]
+  }
+
+  func resizeBubbles(to proposedSize: CGSize) {
+    let newSize = BubbleResizePolicy.clamped(proposedSize)
+    guard newSize != bubbleSize else { return }
+    bubbleSize = newSize
+    notifyPresentationMetricsChanged()
+
+    bubbleSizePersistenceTask?.cancel()
+    bubbleSizePersistenceTask = Task {
+      try? await Task.sleep(for: .milliseconds(350))
+      guard !Task.isCancelled else { return }
+      UserDefaults.standard.set(
+        newSize.width,
+        forKey: Self.bubbleWidthKey
+      )
+      UserDefaults.standard.set(
+        newSize.height,
+        forKey: Self.bubbleHeightKey
+      )
+    }
+  }
+
   var hubDiameter: CGFloat {
     layoutEngine.recommendedHubDiameter(folders: folders)
+  }
+
+  var hubSize: CGSize {
+    bubbleSize
   }
 
   var currentDirectory: URL? {
@@ -109,12 +154,7 @@ final class HubStore {
   }
 
   var presentationMetrics: HubPresentationMetrics {
-    selectedFolderID == nil || isBranchDetached
-      ? .collapsed(hubDiameter: hubDiameter)
-      : .expanded(
-        hubDiameter: hubDiameter,
-        direction: branchDirection
-      )
+    .collapsed(hubSize: hubSize)
   }
 
   func chooseAndAddFolder() {
@@ -133,10 +173,33 @@ final class HubStore {
     }
   }
 
-  func addDroppedItems(_ urls: [URL]) {
-    Task { [weak self] in
-      await self?.importDroppedItems(urls)
+  func addDroppedItems(
+    _ urls: [URL],
+    unreadableItemCount: Int = 0
+  ) {
+    guard !urls.isEmpty else {
+      reportUnreadableDrop(max(unreadableItemCount, 1))
+      return
     }
+
+    let previousImport = dropImportTask
+    dropImportTask = Task { [weak self] in
+      _ = await previousImport?.value
+      guard let self else { return }
+      await self.importDroppedItems(urls)
+      if unreadableItemCount > 0 {
+        self.reportUnreadableDrop(unreadableItemCount)
+      }
+    }
+  }
+
+  func reportUnreadableDrop(_ count: Int) {
+    let itemDescription = count == 1 ? "item" : "items"
+    showNotice(
+      "Couldn’t read \(count) dropped \(itemDescription). "
+        + "Try dragging directly from Finder.",
+      duration: .seconds(8)
+    )
   }
 
   func synchronizeManagedLibrary() {
@@ -174,6 +237,7 @@ final class HubStore {
           collapse()
         }
         folders.removeAll { $0.id == id }
+        folderChildCounts[id] = nil
         layout = layoutEngine.layout(
           folders: folders,
           previous: layout,
@@ -245,6 +309,7 @@ final class HubStore {
 
     if changed {
       updateFolderLayout()
+      refreshManagedFolderCounts()
     }
 
     if let failure = failures.first {
@@ -292,6 +357,7 @@ final class HubStore {
         folders = reconciliation.folders
         updateFolderLayout()
       }
+      refreshManagedFolderCounts()
 
       if let firstFailure {
         showNotice(firstFailure, duration: .seconds(8))
@@ -331,18 +397,27 @@ final class HubStore {
   }
 
   private func importDroppedItems(_ urls: [URL]) async {
+    let scopedURLs = urls.map {
+      (url: $0, didStartAccess: $0.startAccessingSecurityScopedResource())
+    }
+    defer {
+      for access in scopedURLs where access.didStartAccess {
+        access.url.stopAccessingSecurityScopedResource()
+      }
+    }
+
     var folderURLs: [URL] = []
     var fileURLs: [URL] = []
 
-    for url in urls {
+    for access in scopedURLs {
       do {
-        let values = try url.resourceValues(
+        let values = try access.url.resourceValues(
           forKeys: [.isDirectoryKey]
         )
         if values.isDirectory == true {
-          folderURLs.append(url)
+          folderURLs.append(access.url)
         } else {
-          fileURLs.append(url)
+          fileURLs.append(access.url)
         }
       } catch {
         showNotice(error.localizedDescription)
@@ -416,6 +491,7 @@ final class HubStore {
       collapse()
     }
     folders.removeAll { $0.id == id }
+    folderChildCounts[id] = nil
     layout = layoutEngine.layout(
       folders: folders,
       previous: layout,
@@ -436,9 +512,7 @@ final class HubStore {
       onCloseDetachedBranch?()
     }
 
-    guard let recordIndex = folders.firstIndex(where: { $0.id == id }),
-      let label = layout.labels[id]
-    else {
+    guard let recordIndex = folders.firstIndex(where: { $0.id == id }) else {
       return
     }
 
@@ -450,20 +524,10 @@ final class HubStore {
     directoryItems = []
     selectedItemID = nil
     selectedFolderID = id
+    isBranchDetached = true
     phase = .selecting
-
-    let vector = CGVector(
-      dx: label.centerOffset.x,
-      dy: label.centerOffset.y
-    )
-    branchDirection = vector.normalized(
-      or: fallbackDirection(for: folders[recordIndex])
-    )
     onPresentationMetricsChange?(
-      .expanded(
-        hubDiameter: hubDiameter,
-        direction: branchDirection
-      ),
+      .collapsed(hubSize: hubSize),
       true
     )
 
@@ -481,6 +545,7 @@ final class HubStore {
         persist()
       }
       refreshDirectory()
+      onDetachBranch?(.zero)
     } catch {
       showNotice(error.localizedDescription)
       collapse()
@@ -516,7 +581,7 @@ final class HubStore {
       directoryItems = []
       selectedItemID = nil
       onPresentationMetricsChange?(
-        .collapsed(hubDiameter: hubDiameter),
+        .collapsed(hubSize: hubSize),
         true
       )
       return
@@ -533,21 +598,10 @@ final class HubStore {
       self.directoryItems = []
       self.selectedItemID = nil
       self.onPresentationMetricsChange?(
-        .collapsed(hubDiameter: self.hubDiameter),
+        .collapsed(hubSize: self.hubSize),
         true
       )
     }
-  }
-
-  func detachSelectedBranch(offset: CGSize) {
-    guard selectedFolderID != nil, !isBranchDetached else { return }
-    isBranchDetached = true
-    phase = .idle
-    onDetachBranch?(offset)
-    onPresentationMetricsChange?(
-      .collapsed(hubDiameter: hubDiameter),
-      false
-    )
   }
 
   private func notifyPresentationMetricsChanged() {
@@ -799,9 +853,20 @@ final class HubStore {
     setHubPinned(!isHubPinned)
   }
 
+  func setDirectorySortOrder(_ order: DirectorySortOrder) {
+    guard directorySortOrder != order else { return }
+    directorySortOrder = order
+    directoryItems = DirectorySortPolicy.sorted(
+      directoryItems,
+      using: order
+    )
+  }
+
   func clearAllFolders() {
     collapse()
+    folderCountsTask?.cancel()
     folders = []
+    folderChildCounts = [:]
     layout = .empty
     persist()
   }
@@ -811,6 +876,7 @@ final class HubStore {
     guard let directory = currentDirectory else { return }
     isLoadingDirectory = true
     let showHiddenFiles = showHiddenFiles
+    let sortOrder = directorySortOrder
     let service = directoryService
 
     refreshTask = Task { [weak self] in
@@ -818,7 +884,8 @@ final class HubStore {
         Result {
           try service.contents(
             of: directory,
-            showHiddenFiles: showHiddenFiles
+            showHiddenFiles: showHiddenFiles,
+            sortOrder: sortOrder
           )
         }
       }.value
@@ -830,9 +897,16 @@ final class HubStore {
       self.isLoadingDirectory = false
       switch result {
       case .success(let items):
-        self.directoryItems = items
+        let displayedItems =
+          sortOrder == self.directorySortOrder
+          ? items
+          : DirectorySortPolicy.sorted(
+            items,
+            using: self.directorySortOrder
+          )
+        self.directoryItems = displayedItems
         if let selectedItemID = self.selectedItemID,
-          !items.contains(where: { $0.id == selectedItemID })
+          !displayedItems.contains(where: { $0.id == selectedItemID })
         {
           self.selectedItemID = nil
         }
@@ -863,20 +937,69 @@ final class HubStore {
     libraryWatcher.start(
       watching: rootURL,
       onEvents: { [weak self] eventPaths in
-        guard reconciler.affectsMembership(eventPaths: eventPaths) else {
-          return
-        }
+        let affectsMembership = reconciler.affectsMembership(
+          eventPaths: eventPaths
+        )
 
         DispatchQueue.main.async {
-          self?.libraryWatcherDebounceTask?.cancel()
-          self?.libraryWatcherDebounceTask = Task { [weak self] in
+          guard let self else { return }
+          self.libraryMembershipRefreshPending =
+            self.libraryMembershipRefreshPending || affectsMembership
+          self.libraryWatcherDebounceTask?.cancel()
+          self.libraryWatcherDebounceTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
-            guard !Task.isCancelled else { return }
-            self?.synchronizeManagedLibrary()
+            guard !Task.isCancelled, let self else { return }
+            let shouldReconcile = self.libraryMembershipRefreshPending
+            self.libraryMembershipRefreshPending = false
+            if shouldReconcile {
+              self.synchronizeManagedLibrary()
+            } else {
+              self.refreshManagedFolderCounts()
+            }
           }
         }
       }
     )
+  }
+
+  private func refreshManagedFolderCounts() {
+    folderCountsTask?.cancel()
+    let folderSnapshot = folders
+    let showHiddenFiles = showHiddenFiles
+    let service = directoryService
+
+    folderCountsTask = Task { [weak self] in
+      let worker = Task.detached(priority: .utility) {
+        var result: [UUID: Int] = [:]
+        result.reserveCapacity(folderSnapshot.count)
+        for folder in folderSnapshot {
+          guard !Task.isCancelled else { return result }
+          let url = URL(
+            fileURLWithPath: folder.lastKnownPath,
+            isDirectory: true
+          )
+          if let count = service.childCount(
+            of: url,
+            showHiddenFiles: showHiddenFiles
+          ) {
+            result[folder.id] = count
+          }
+        }
+        return result
+      }
+      let counts = await withTaskCancellationHandler {
+        await worker.value
+      } onCancel: {
+        worker.cancel()
+      }
+
+      guard !Task.isCancelled, let self,
+        self.folders == folderSnapshot
+      else {
+        return
+      }
+      self.folderChildCounts = counts
+    }
   }
 
   private func clearSelectionIfRemoved(_ removedIDs: Set<UUID>) {
@@ -909,11 +1032,6 @@ final class HubStore {
     }
     activeSecurityScopedURL = nil
     activeSecurityScopeStarted = false
-  }
-
-  private func fallbackDirection(for record: ManagedFolderRecord) -> CGVector {
-    let angle = Double(record.layoutSeed % 6_283) / 1_000
-    return CGVector(dx: cos(angle), dy: sin(angle))
   }
 
   private func conflictResolution(for destination: URL)
